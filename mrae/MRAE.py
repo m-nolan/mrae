@@ -1,3 +1,4 @@
+from json import decoder
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,21 +24,42 @@ class MRAE(nn.Module):
 
 class RAE_block(nn.Module):
 
-    def __init__(self):
+    def __init__(self,input_size,encoder_size,decoder_size,dropout,num_layers_encoder=1,bidirectional_encoder=True,rand_samp=True):
         super().__init__()
-        # initalize models
-        self.rand_samp  = True
-        self.encoder    = Encoder()
-        self.decoder    = Decoder()
-        self.block_out  = None
 
-    def forward(self,src):
+        self.input_size = input_size
+        self.encoder_size = encoder_size
+        self.decoder_size = decoder_size
+        self.dropout = dropout
+        self.rand_samp  = rand_samp
+
+        # initalize model blocks
+        self.encoder    = Encoder(
+            input_size=input_size,
+            output_size=decoder_size,
+            hidden_size=encoder_size,
+            dropout=dropout,
+            num_layers=num_layers_encoder,
+            bidirectional=bidirectional_encoder)
+        self.decoder    = Decoder(
+            hidden_size=decoder_size,
+            dropout=dropout,
+            num_layers=1,
+            bidirectional=False
+        )
+        self.block_out  = nn.Linear(in_features=decoder_size,out_features=input_size)
+
+    def forward(self,input):
         # forward pass
-        encoder_out = self.encoder(src)
-        decoder_out = self.decoder(encoder_out)
-        return self.block_out(decoder_out)
+        batch_size, seq_len, input_size = input.size()
+        assert input_size == self.input_size, f"Input tensor size {input_size} must match model input_size {self.input_size}"
+        mean, logvar = self.encoder(input)
+        decoder_ic = self.sample_decoder_ic(mean, logvar) # model latent state
+        decoder_input = self.decoder.gen_input(batch_size,seq_len)
+        decoder_out = self.decoder(decoder_input,decoder_ic)
+        return self.block_out(decoder_out), decoder_out
 
-    def sample_generator_ic(self, mean, logvar):
+    def sample_decoder_ic(self, mean, logvar):
         if self.rand_samp:
             return sample_gaussian(mean, logvar)
         else:

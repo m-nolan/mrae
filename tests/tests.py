@@ -1,3 +1,4 @@
+from msilib import sequence
 import unittest
 import torch
 from mrae import MRAE, rnn
@@ -8,7 +9,26 @@ class RAETests(unittest.TestCase):
         pass
 
     def test_rae_block(self):
-        pass
+        input_size = 10
+        encoder_size = 20
+        decoder_size = 30
+        dropout = 0.3
+
+        rae_block = MRAE.RAE_block(
+            input_size=input_size,
+            encoder_size=encoder_size,
+            decoder_size=decoder_size,
+            dropout=dropout
+        )
+
+        batch_size = 50
+        sequence_length = 40
+        input = torch.randn(batch_size,sequence_length,input_size)
+
+        block_out, block_hidden = rae_block(input)
+
+        self.assertEqual(block_out.size(),(batch_size,sequence_length,input_size))
+        self.assertEqual(block_hidden.size(),(batch_size,sequence_length,decoder_size))
 
     def test_encoder(self):
         input_size = 10
