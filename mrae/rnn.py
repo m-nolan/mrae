@@ -3,6 +3,40 @@
 import torch
 import torch.nn as nn
 
+class GRU_Modified(nn.Module):
+
+    def __init__(self, input_size, hidden_size):
+        super().__init__()
+        self.input_size     = input_size
+        self.hidden_size    = hidden_size
+
+        self.gru_cell   = GRU_Cell_Modified(
+            input_size=input_size,
+            hidden_size=hidden_size
+        )
+
+    def forward(self, input, h0=None):
+        """
+        Modified GRU forward pass
+
+        Args:
+            input (torch.Tensor): Input sequence tensor. Must be size [*,n_sample,input_size]
+            h0 (torch.Tensor, optional): Hidden state initial condition tensor. Must be size [*,hidden_size]. Will initialize with zero tensor if input value is None. Defaults to None.
+
+        Returns:
+            output (torch.Tensor): Output sequence tensor size [*, n_sample, input_size]
+        """
+        batch_size, n_samples, input_size = input.size()
+        assert input_size == self.input_size, "Input tensor size mismatch"
+        output = torch.empty(batch_size,n_samples,self.hidden_size)
+        if h0 is None:
+            h0 = torch.zeros(batch_size,self.hidden_size)
+        h_in = h0
+        for s_idx in range(n_samples):
+            output[:,s_idx,:] = self.gru_cell(input[:,s_idx,:],h_in)
+            h_in = output[:,s_idx,:]
+        return output
+
 class GRU_Cell_Modified(nn.Module):
 
     def __init__(self, input_size, hidden_size, update_bias=1.0):

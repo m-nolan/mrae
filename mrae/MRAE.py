@@ -5,7 +5,7 @@ import torch.nn.functional as F
 class MRAE(nn.Module):
 
     def __init__(self):
-        super().init()
+        super().__init__()
         pass
 
     def forward(self,src):
@@ -21,7 +21,7 @@ class MRAE(nn.Module):
 class RAE_block(nn.Module):
 
     def __init__(self):
-        super().init()
+        super().__init__()
         # initalize models
         self.rand_samp = True
         self.encoder = Encoder()
@@ -43,7 +43,7 @@ class RAE_block(nn.Module):
 class Encoder(nn.Module):
 
     def __init__(self):
-        super().init()
+        super().__init__()
 
     def forward(self,input):
         pass
@@ -51,12 +51,25 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
 
     def __init__(self):
-        super().init()
+        super().__init__()
 
     def forward(self,input):
         pass
 
 def sample_gaussian(mean, logvar):
+    """
+    sample_gaussian(mean, logvar)
+
+    Generates a tensor of samples from an input parameterization.
+    Used for generating random latent samples when using the VAE reparameterization trick.
+
+    Args:
+        mean (torch.Tensor): tensor of means
+        logvar (torch.Tensor): tensor of log variances
+
+    Returns:
+        sample (torch.Tensor): tensor of gaussian samples
+    """
     # Generate noise from standard gaussian
     eps = torch.randn(mean.shape, requires_grad=False, dtype=torch.float32).to(torch.get_default_dtype()).to(mean.device)
     # Scale and shift by mean and standard deviation
