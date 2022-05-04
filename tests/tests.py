@@ -1,7 +1,6 @@
 import unittest
 import torch
-from .. import MRAE
-from .. import rnn
+from mrae import rnn
 
 class RNNTests(unittest.TestCase):
 
@@ -26,3 +25,6 @@ class RNNTests(unittest.TestCase):
         )
 
         self.assertEqual(test_hidden_update.size(),(batch_size,hidden_size))
+
+if __name__ == "__main__":
+    unittest.main()

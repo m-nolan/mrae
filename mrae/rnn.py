@@ -3,13 +3,13 @@
 import torch
 import torch.nn as nn
 
-class GRU_Cell_Modified(torch.Module):
+class GRU_Cell_Modified(nn.Module):
 
     def __init__(self, input_size, hidden_size, update_bias=1.0):
-        super().init()
+        super().__init__()
         self.input_size     = input_size
         self.hidden_size    = hidden_size
-        self.forget_bias    = update_bias
+        self.update_bias    = update_bias
 
         # concat sizes for collected hidden states
         self._xh_size   = input_size + hidden_size
