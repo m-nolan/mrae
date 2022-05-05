@@ -1,4 +1,3 @@
-from json import decoder
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,12 +7,56 @@ from warnings import warn
 
 class MRAE(nn.Module):
 
-    def __init__(self):
+    def __init__(self, input_size, encoder_size, decoder_size, num_blocks, dropout, num_layers_encoder=1, bidirectional_encoder=True, rand_samp=True, device='cpu'):
         super().__init__()
-        pass
+        self.input_size = input_size
+        self.num_blocks = num_blocks
+        self.device=device
+        
+        # RAE blocks
+        self.rae_blocks = nn.ModuleList(
+            self.num_blocks * [
+                RAE_block(
+                    input_size=input_size,
+                    encoder_size=encoder_size,
+                    decoder_size=decoder_size,
+                    dropout=dropout,
+                    num_layers_encoder=num_layers_encoder,
+                    bidirectional_encoder=bidirectional_encoder,
+                    rand_samp=rand_samp
+                )
+            ]
+        )
+        # block output mixing layer. If this is a 1-block model, just use the block output.
+        # otherwise, make a mixing layer that combines all block hidden state activity.
+        if self.input_size > 1:
+            self.block_hidden_mix = nn.Linear(
+                in_features=num_blocks*decoder_size,
+                out_features=input_size
+            )
+        else:
+            self.block_hidden_mix = nn.Identity()
 
-    def forward(self,src):
-        pass
+        self.to(self.device)
+
+    def forward(self,input):
+        batch_size, seq_len, input_size, n_band = input.shape
+        assert input_size == self.input_size
+        assert n_band == self.num_blocks
+
+        block_output = []
+        block_hidden = []
+        for b_idx in range(self.num_blocks):
+            _b_o, _b_h = self.rae_blocks[b_idx](input[...,b_idx])
+            block_output.append(_b_o)
+            block_hidden.append(_b_h)
+        block_output = torch.stack(block_output,axis=-1)
+        if self.num_blocks > 1:
+            output = self.block_hidden_mix(block_hidden.reshape(batch_size,seq_len,-1))
+        else:
+            output = self.block_hidden_mix(block_output[...,0])
+
+        return output, block_output
 
     def get_checkpoint(self):
         pass
@@ -24,7 +67,7 @@ class MRAE(nn.Module):
 
 class RAE_block(nn.Module):
 
-    def __init__(self,input_size,encoder_size,decoder_size,dropout,num_layers_encoder=1,bidirectional_encoder=True,rand_samp=True):
+    def __init__(self, input_size, encoder_size, decoder_size, dropout, num_layers_encoder=1, bidirectional_encoder=True, rand_samp=True):
         super().__init__()
 
         self.input_size = input_size
@@ -49,7 +92,7 @@ class RAE_block(nn.Module):
         )
         self.block_out  = nn.Linear(in_features=decoder_size,out_features=input_size)
 
-    def forward(self,input):
+    def forward(self, input):
         # forward pass
         batch_size, seq_len, input_size = input.size()
         assert input_size == self.input_size, f"Input tensor size {input_size} must match model input_size {self.input_size}"
@@ -94,7 +137,7 @@ class Encoder(nn.Module):
         else:
             self.linear_out = nn.Linear(in_features=gru_output_size,out_features=2*output_size)
 
-    def forward(self,input):
+    def forward(self, input):
         batch_size, seq_len, input_size = input.size()
         assert input_size == self.input_size
         rnn_out, rnn_n = self.rnn(input)
@@ -122,13 +165,13 @@ class Decoder(nn.Module):
         self.rnn    = rnn.GRU_Modified(self.input_size,self.hidden_size)
         self.dropout_layer = nn.Dropout(dropout)
 
-    def forward(self,input,h0):
+    def forward(self, input, h0):
         gen_out = self.rnn(input,h0=h0)
         gen_out = self.dropout_layer(gen_out)
         return gen_out
 
     def gen_input(self,batch_size,seq_len):
-        return torch.zeros(batch_size,seq_len,self.input_size)
+        return torch.zeros(batch_size,seq_len,self.input_size) #TODO: make this force to self.device
 
 def sample_gaussian(mean, logvar):
     """

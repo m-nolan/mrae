@@ -6,7 +6,27 @@ from mrae import MRAE, rnn
 class RAETests(unittest.TestCase):
     
     def test_mrae(self):
-        pass
+        input_size = 10
+        num_blocks = 5
+        encoder_size = 20
+        decoder_size = 20
+        dropout = 0.3
+
+        mrae = MRAE.MRAE(
+            input_size=input_size,
+            encoder_size=encoder_size,
+            decoder_size=decoder_size,
+            num_blocks=num_blocks,
+            dropout=dropout
+        )
+
+        batch_size = 40
+        sequence_length = 50
+        input = torch.randn(batch_size,sequence_length,input_size,num_blocks)
+        output, block_output = mrae(input)
+        
+        self.assertEqual(output.size(),(batch_size,sequence_length,input_size))
+        self.assertEqual(block_output.size(),(batch_size,sequence_length,input_size,num_blocks))
 
     def test_rae_block(self):
         input_size = 10
