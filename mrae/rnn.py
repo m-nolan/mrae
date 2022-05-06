@@ -37,6 +37,9 @@ class GRU_Modified(nn.Module):
             h_in = output[:,s_idx,:]
         return output
 
+    def hidden_weight_l2_norm(self):
+        return self.gru_cell.hidden_weight_l2_norm()
+
 class GRU_Cell_Modified(nn.Module):
 
     def __init__(self, input_size, hidden_size, update_bias=1.0):
@@ -86,3 +89,7 @@ class GRU_Cell_Modified(nn.Module):
         hhat = torch.tanh(self.fc_xhr_hhat(xrh))
 
         return torch.mul(z, h) + torch.mul(1-z, hhat)
+
+    def hidden_weight_l2_norm(self):
+        return self.fc_xh_rz.weight.norm(2).pow(2) / self.fc_xh_rz.weight.numel() + \
+            self.fc_xhr_hhat.weight.norm(2).pow(2) / self.fc_xhr_hhat.weight.numel()

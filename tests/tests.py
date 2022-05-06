@@ -20,13 +20,18 @@ class RAETests(unittest.TestCase):
             dropout=dropout
         )
 
+        # forward pass
         batch_size = 40
         sequence_length = 50
         input = torch.randn(batch_size,sequence_length,input_size,num_blocks)
-        output, block_output = mrae(input)
-        
-        self.assertEqual(output.size(),(batch_size,sequence_length,input_size))
-        self.assertEqual(block_output.size(),(batch_size,sequence_length,input_size,num_blocks))
+        mrae_output = mrae(input)
+
+        self.assertEqual(mrae_output.output.size(),(batch_size,sequence_length,input_size))
+        self.assertEqual(mrae_output.block_output.size(),(batch_size,sequence_length,input_size,num_blocks))
+        self.assertEqual(mrae_output.hidden.size(),(batch_size,sequence_length,decoder_size,num_blocks))
+        self.assertEqual(mrae_output.decoder_ic.size(),(batch_size,decoder_size,num_blocks))
+        self.assertEqual(len(mrae_output.decoder_ic_kl_div),num_blocks)
+        self.assertEqual(len(mrae_output.decoder_l2),num_blocks)
 
     def test_rae_block(self):
         input_size = 10
@@ -45,10 +50,12 @@ class RAETests(unittest.TestCase):
         sequence_length = 40
         input = torch.randn(batch_size,sequence_length,input_size)
 
-        block_out, block_hidden = rae_block(input)
+        block_out, block_hidden, block_dec_ic, block_kl_div = rae_block(input)
 
         self.assertEqual(block_out.size(),(batch_size,sequence_length,input_size))
         self.assertEqual(block_hidden.size(),(batch_size,sequence_length,decoder_size))
+        self.assertEqual(block_dec_ic.size(),(batch_size,decoder_size))
+        self.assertTrue(block_kl_div > 0)
 
     def test_encoder(self):
         input_size = 10

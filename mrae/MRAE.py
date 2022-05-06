@@ -1,9 +1,23 @@
+from collections import namedtuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from . import rnn
 
 from warnings import warn
+
+# output collection structure (named tuple, good for potential DDP)
+mrae_output = namedtuple(
+    'mrae_0utput',
+    [
+        'output',
+        'block_output',
+        'hidden',
+        'decoder_ic',
+        'decoder_ic_kl_div',
+        'decoder_l2'
+        ]
+)
 
 class MRAE(nn.Module):
 
@@ -46,17 +60,34 @@ class MRAE(nn.Module):
 
         block_output = []
         block_hidden = []
+        block_dec_ic = []
+        block_dec_ic_kl_div = []
+        block_dec_l2 = []
         for b_idx in range(self.num_blocks):
-            _b_o, _b_h = self.rae_blocks[b_idx](input[...,b_idx])
+            _b_o, _b_h, _b_d_ic, _b_kld = self.rae_blocks[b_idx](input[...,b_idx])
+            _b_l2 = self.rae_blocks[b_idx].compute_decoder_l2()
             block_output.append(_b_o)
             block_hidden.append(_b_h)
-        block_output = torch.stack(block_output,axis=-1)
+            block_dec_ic.append(_b_d_ic)
+            block_dec_ic_kl_div.append(_b_kld)
+            block_dec_l2.append(_b_l2)
+        block_output = torch.stack(block_output,dim=-1)
+        block_hidden = torch.stack(block_hidden,dim=-1)
+        block_dec_ic = torch.stack(block_dec_ic,dim=-1)
+        # block_dec_ic_kl_div = torch.stack(block_dec_ic_kl_div,dim=-1)
+        # block_dec_l2 = torch.stack(block_dec_l2,dim=-1)
         if self.num_blocks > 1:
             output = self.block_hidden_mix(block_hidden.reshape(batch_size,seq_len,-1))
         else:
             output = self.block_hidden_mix(block_output[...,0])
 
-        return output, block_output
+        return mrae_output(
+            output=output, 
+            block_output=block_output, 
+            hidden=block_hidden, 
+            decoder_ic=block_dec_ic,
+            decoder_ic_kl_div=block_dec_ic_kl_div, 
+            decoder_l2=block_dec_l2)
 
     def get_checkpoint(self):
         pass
@@ -67,7 +98,7 @@ class MRAE(nn.Module):
 
 class RAE_block(nn.Module):
 
-    def __init__(self, input_size, encoder_size, decoder_size, dropout, num_layers_encoder=1, bidirectional_encoder=True, rand_samp=True):
+    def __init__(self, input_size, encoder_size, decoder_size, dropout, num_layers_encoder=1, bidirectional_encoder=True, decoder_ic_prior_params={}, rand_samp=True):
         super().__init__()
 
         self.input_size = input_size
@@ -92,15 +123,34 @@ class RAE_block(nn.Module):
         )
         self.block_out  = nn.Linear(in_features=decoder_size,out_features=input_size)
 
+        # create variational prior parameters for decoder IC
+        self.dec_ic_prior_params = {
+            'mean': decoder_ic_prior_params.get('mean',0.),
+            'logvar': decoder_ic_prior_params.get('logvar',0.),
+        }
+
     def forward(self, input):
         # forward pass
         batch_size, seq_len, input_size = input.size()
         assert input_size == self.input_size, f"Input tensor size {input_size} must match model input_size {self.input_size}"
         mean, logvar = self.encoder(input)
+        kl_div = self.compute_dec_ic_kl_div(mean, logvar)
         decoder_ic = self.sample_decoder_ic(mean, logvar) # model latent state
         decoder_input = self.decoder.gen_input(batch_size,seq_len)
         decoder_out = self.decoder(decoder_input,decoder_ic)
-        return self.block_out(decoder_out), decoder_out
+        return self.block_out(decoder_out), decoder_out, decoder_ic, kl_div
+
+    def compute_dec_ic_kl_div(self,dec_ic_posterior_mean,dec_ic_posterior_logvar):
+        kl_div = kl_div_normals(
+            self.dec_ic_prior_params['mean'],
+            dec_ic_posterior_mean,
+            self.dec_ic_prior_params['logvar'],
+            dec_ic_posterior_logvar,
+        ).mean(dim=0).sum()
+        return kl_div # average this? sum this?
+
+    def compute_decoder_l2(self):
+        return self.decoder.rnn.hidden_weight_l2_norm()
 
     def sample_decoder_ic(self, mean, logvar):
         if self.rand_samp:
@@ -191,3 +241,21 @@ def sample_gaussian(mean, logvar):
     eps = torch.randn(mean.shape, requires_grad=False, dtype=torch.float32).to(torch.get_default_dtype()).to(mean.device)
     # Scale and shift by mean and standard deviation
     return torch.exp(logvar*0.5)*eps + mean
+
+def kl_div_normals(mean_1, mean_2, logvar_1, logvar_2):
+    """
+    kl_div_normals
+
+    compute the kl divergence of two normal distributions, N_2 from N_1
+
+    Args:
+        mean_1 (float): mean of N_1
+        mean_2 (float): mean of N_2
+        logvar_1 (float): log variance of N_1
+        logvar_2 (float): log_variance of N_2
+
+    Returns:
+        _type_: _description_
+    """
+    return 0.5 * (logvar_2 - logvar_1 + torch.exp(logvar_1 - logvar_2) \
+        + (mean_1 - mean_2).pow(2)/torch.exp(logvar_2) + 1)
