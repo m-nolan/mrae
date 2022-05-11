@@ -1,4 +1,3 @@
-from msilib import sequence
 import unittest
 import torch
 from mrae import MRAE, objective, rnn
