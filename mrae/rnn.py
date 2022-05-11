@@ -33,8 +33,9 @@ class GRU_Modified(nn.Module):
             h0 = torch.zeros(batch_size,self.hidden_size)
         h_in = h0
         for s_idx in range(n_samples):
-            output[:,s_idx,:] = self.gru_cell(input[:,s_idx,:],h_in)
-            h_in = output[:,s_idx,:]
+            h_out = self.gru_cell(input[:,s_idx,:],h_in)
+            output[:,s_idx,:] = h_out
+            h_in = h_out
         return output
 
     def hidden_weight_l2_norm(self):

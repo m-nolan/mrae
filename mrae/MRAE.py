@@ -8,11 +8,12 @@ from warnings import warn
 
 class MRAE(nn.Module):
 
-    def __init__(self, input_size, encoder_size, decoder_size, num_blocks, dropout, num_layers_encoder=1, bidirectional_encoder=True, rand_samp=True, device='cpu'):
+    def __init__(self, input_size, encoder_size, decoder_size, num_blocks, dropout, num_layers_encoder=1, bidirectional_encoder=True, max_grad_norm=5.0, rand_samp=True, device='cpu'):
         super().__init__()
         self.input_size = input_size
         self.num_blocks = num_blocks
         self.device=device
+        self.max_grad_norm = max_grad_norm
         
         # RAE blocks
         self.rae_blocks = nn.ModuleList(
@@ -30,7 +31,7 @@ class MRAE(nn.Module):
         )
         # block output mixing layer. If this is a 1-block model, just use the block output.
         # otherwise, make a mixing layer that combines all block hidden state activity.
-        if self.input_size > 1:
+        if self.num_blocks > 1:
             self.block_hidden_mix = nn.Linear(
                 in_features=num_blocks*decoder_size,
                 out_features=input_size
@@ -76,8 +77,45 @@ class MRAE(nn.Module):
             decoder_ic_kl_div=block_dec_ic_kl_div, 
             decoder_l2=block_dec_l2)
 
-    def get_optimizer(self):
-        pass
+    def backward(self, output_obj, block_obj):
+        for b_opt in self.block_opt:
+            b_opt.zero_grad()
+        if self.num_blocks > 1:
+            self.output_opt.zero_grad()
+        for b_idx in range(self.num_blocks):
+            block_obj[b_idx].backward(
+                inputs=[p for p in self.rae_blocks[b_idx].parameters()],
+                retain_graph=True
+            )
+            torch.nn.utils.clip_grad_norm_(
+                self.rae_blocks[b_idx].parameters(),
+                max_norm=self.max_grad_norm
+            )
+        if self.num_blocks > 1:
+            output_obj.backward(
+                inputs = [p for p in self.block_hidden_mix.parameters()]
+            )
+            torch.nn.utils.clip_grad_norm_(
+                self.block_hidden_mix.parameters(),
+                max_norm=self.max_grad_norm
+            )
+
+    def get_optimizers(self):
+        # block optimizers
+        block_opt = [
+            torch.optim.Adam(
+                [p for p in rae_block.parameters() if p.requires_grad]
+            ) for rae_block in self.rae_blocks
+        ]
+        # output mixing layer optimizer - check if broken on 1-block instance
+        output_opt = torch.optim.Adam(
+            [p for p in self.block_hidden_mix.parameters() if p.requires_grad]
+        ) if self.num_blocks > 1 else None # is there an empty optimizer base class to use instead?
+
+        return output_opt, block_opt
+
+    def configure_optimizers(self):
+        self.output_opt, self.block_opt = self.get_optimizers()
 
     def get_checkpoint(self):
         pass

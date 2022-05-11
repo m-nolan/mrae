@@ -7,7 +7,7 @@ class RAETests(unittest.TestCase):
     
     def test_mrae(self):
         input_size = 10
-        num_blocks = 5
+        num_blocks = 1
         encoder_size = 20
         decoder_size = 20
         dropout = 0.3
@@ -106,7 +106,7 @@ class RAETests(unittest.TestCase):
 
 class OptimizationTests(unittest.TestCase):
 
-    def test_objective(self):
+    def test_objective_and_optimizers(self):
         # do a forward pass of the model then a forward pass of the objective class, check outputs
         input_size = 10
         num_blocks = 5
@@ -149,8 +149,45 @@ class OptimizationTests(unittest.TestCase):
 
     def test_optimizer(self):
         # test parameter updates in optimizer backward pass for multiblock model
-        pass
+        # do a forward pass of the model then a forward pass of the objective class, check outputs
+        input_size = 10
+        num_blocks = 1
+        encoder_size = 20
+        decoder_size = 20
+        dropout = 0.3
+        max_grad_norm = 3.0
 
+        mrae = MRAE.MRAE(
+            input_size=input_size,
+            encoder_size=encoder_size,
+            decoder_size=decoder_size,
+            num_blocks=num_blocks,
+            dropout=dropout,
+            max_grad_norm=max_grad_norm
+        )
+
+        kl_div_scale = 0.2
+        l2_scale = 0.2
+        mrae_obj = objective.MRAEObjective(
+            kl_div_scale = kl_div_scale,
+            l2_scale = l2_scale
+        )
+
+        output_opt, block_opt = mrae.get_optimizers()
+
+        # forward pass
+        batch_size = 40
+        sequence_length = 50
+        input = torch.randn(batch_size,sequence_length,input_size,num_blocks)
+        target = torch.randn(batch_size,sequence_length,input_size)
+        mrae_output = mrae(input)
+
+        output_obj, block_obj = mrae_obj(mrae_output,target,input)
+        mrae.configure_optimizers()
+
+        # backward pass over blocks, then output - check 1-block case with output ID layer
+        # model backward pass call includes zero_grad and clip calls
+        mrae.backward(output_obj, block_obj)
 
 class RNNTests(unittest.TestCase):
 
