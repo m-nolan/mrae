@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 import mrae
 from .data import mrae_output
@@ -28,6 +29,59 @@ class MRAEObjective(nn.Module):
         
         return output_objective, block_objective
 
+    def step(self,epoch_idx):
+        # update objective regularization term scalars according to epoch count
+        pass
+
+# class MRAEScheduler(ReduceLROnPlateau):
+
+#     def __init__(self, optimizer, mode='min', factor=0.1, patience=10,
+#                 verbose=False, threshold=1e-4, threshold_mode='rel',
+#                 cooldown=0, min_lr=0, eps=1e-8):
+#         super().__init__(optimizer=optimizer, mode=mode, factor=factor,
+#             patience=patience, verbose=verbose, threshold=threshold,
+#             threshold_mode=threshold_mode, cooldown=cooldown, min_lr=min_lr,
+#             eps=eps)
+
+#     def step(self, val_obj, epoch=None):
+#         val_obj = float(val_obj)
+#         if epoch is None:
+#             epoch = self.last_epoch
+
+# class LFADS_Scheduler(ReduceLROnPlateau):
+    
+#     def __init__(self, optimizer, mode='min', factor=0.1, patience=10,
+#                  verbose=False, threshold=1e-4, threshold_mode='rel',
+#                  cooldown=0, min_lr=0, eps=1e-8):
+        
+#         super(LFADS_Scheduler, self).__init__(optimizer=optimizer, mode=mode, factor=factor, patience=patience,
+#                                               verbose=verbose, threshold=threshold, threshold_mode=threshold_mode,
+#                                               cooldown=cooldown, min_lr=min_lr, eps=eps)
+        
+        
+#     def step(self, metrics, epoch=None):
+#         # convert `metrics` to float, in case it's a zero-dim Tensor
+#         current = float(metrics)
+#         if epoch is None:
+#             epoch = self.last_epoch = self.last_epoch + 1
+#         self.last_epoch = epoch
+
+#         if self.is_better(current, self.best):
+#             self.best = current
+#             self.num_bad_epochs = 0
+#         else:
+#             self.num_bad_epochs += 1
+
+#         if self.in_cooldown:
+#             self.cooldown_counter -= 1
+#             self.num_bad_epochs = 0  # ignore any bad epochs in cooldown
+
+#         if self.num_bad_epochs > self.patience:
+#             self._reduce_lr(epoch)
+#             self.cooldown_counter = self.cooldown
+#             self.num_bad_epochs = 0
+#             self.best = self.mode_worse
+
 def tensor_3d_mse(output, target):
     """tensor_3d_mse
 
@@ -44,3 +98,18 @@ def tensor_3d_mse(output, target):
     """
     assert output.size() == target.size()
     return (output - target).pow(2).mean(dim=(0,1,2))
+
+def backward_on_block_params(obj,block,retain_graph=False):
+    """backward_on_block_params
+
+    run backwards diff pass from objective obj on parameters from a give model block block.
+
+    Args:
+        obj (torch.Tensor): pytorch model objective output
+        block (nn.Module): pytorch model block
+        retain_graph (bool, optional): retain_graph option in obj.backward(). Defaults to False.
+    """
+    obj.backward(
+        inputs=[p for p in block.parameters() if p.requires_grad],
+        retain_graph=retain_graph
+    )

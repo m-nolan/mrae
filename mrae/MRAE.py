@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from . import rnn
 from .data import mrae_output
+from .objective import backward_on_block_params
 
 from warnings import warn
 
@@ -83,8 +85,9 @@ class MRAE(nn.Module):
         if self.num_blocks > 1:
             self.output_opt.zero_grad()
         for b_idx in range(self.num_blocks):
-            block_obj[b_idx].backward(
-                inputs=[p for p in self.rae_blocks[b_idx].parameters()],
+            backward_on_block_params(
+                block_obj[b_idx],
+                self.rae_blocks[b_idx],
                 retain_graph=True
             )
             torch.nn.utils.clip_grad_norm_(
@@ -92,15 +95,24 @@ class MRAE(nn.Module):
                 max_norm=self.max_grad_norm
             )
         if self.num_blocks > 1:
-            output_obj.backward(
-                inputs = [p for p in self.block_hidden_mix.parameters()]
+            backward_on_block_params(
+                output_obj,
+                self.block_hidden_mix
             )
             torch.nn.utils.clip_grad_norm_(
                 self.block_hidden_mix.parameters(),
                 max_norm=self.max_grad_norm
             )
 
+    def step_schedulers(self, output_obj, block_obj):
+        # call this after validation step
+        for b_idx in range(self.num_blocks):
+            self.block_sch[b_idx].step(block_obj[b_idx])
+        if self.num_blocks > 1:
+            self.output_sch.step(output_obj)
+
     def get_optimizers(self):
+        # default options for now
         # block optimizers
         block_opt = [
             torch.optim.Adam(
@@ -114,8 +126,25 @@ class MRAE(nn.Module):
 
         return output_opt, block_opt
 
+    def get_schedulers(self):
+        assert hasattr(self,'output_opt'), 'Output layer optimizer not found.'
+        assert hasattr(self,'block_opt'), 'Block optimizer list not found.'
+        # default options for now
+        block_sch = [
+            ReduceLROnPlateau(
+                b_opt
+            ) for b_opt in self.block_opt
+        ]
+        output_sch = ReduceLROnPlateau(
+            self.output_opt
+        ) if self.num_blocks > 1 else None
+        return output_sch, block_sch
+
     def configure_optimizers(self):
         self.output_opt, self.block_opt = self.get_optimizers()
+
+    def configure_schedulers(self):
+        self.output_sch, self.block_sch = self.get_schedulers()
 
     def get_checkpoint(self):
         pass

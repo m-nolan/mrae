@@ -143,10 +143,6 @@ class OptimizationTests(unittest.TestCase):
         self.assertTrue((block_obj > 0).all())
         self.assertEqual(block_obj.numel(),num_blocks)
 
-    def test_scheduler(self):
-        # create scheduler to update objective parameters, test update
-        pass
-
     def test_optimizer(self):
         # test parameter updates in optimizer backward pass for multiblock model
         # do a forward pass of the model then a forward pass of the objective class, check outputs
@@ -173,8 +169,6 @@ class OptimizationTests(unittest.TestCase):
             l2_scale = l2_scale
         )
 
-        output_opt, block_opt = mrae.get_optimizers()
-
         # forward pass
         batch_size = 40
         sequence_length = 50
@@ -188,6 +182,47 @@ class OptimizationTests(unittest.TestCase):
         # backward pass over blocks, then output - check 1-block case with output ID layer
         # model backward pass call includes zero_grad and clip calls
         mrae.backward(output_obj, block_obj)
+
+    def test_scheduler(self):
+        # create scheduler to update objective parameters, test update
+        input_size = 10
+        num_blocks = 1
+        encoder_size = 20
+        decoder_size = 20
+        dropout = 0.3
+        max_grad_norm = 3.0
+
+        mrae = MRAE.MRAE(
+            input_size=input_size,
+            encoder_size=encoder_size,
+            decoder_size=decoder_size,
+            num_blocks=num_blocks,
+            dropout=dropout,
+            max_grad_norm=max_grad_norm
+        )
+
+        kl_div_scale = 0.2
+        l2_scale = 0.2
+        mrae_obj = objective.MRAEObjective(
+            kl_div_scale = kl_div_scale,
+            l2_scale = l2_scale
+        )
+
+        # forward pass
+        batch_size = 40
+        sequence_length = 50
+        input = torch.randn(batch_size,sequence_length,input_size,num_blocks)
+        target = torch.randn(batch_size,sequence_length,input_size)
+        mrae_output = mrae(input)
+
+        output_obj, block_obj = mrae_obj(mrae_output,target,input)
+        mrae.configure_optimizers()
+        mrae.configure_schedulers()
+
+        # backward pass over blocks, then output - check 1-block case with output ID layer
+        # model backward pass call includes zero_grad and clip calls
+        mrae.backward(output_obj, block_obj)
+        mrae.step_schedulers(output_obj, block_obj)
 
 class RNNTests(unittest.TestCase):
 
