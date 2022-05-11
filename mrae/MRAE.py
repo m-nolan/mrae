@@ -1,23 +1,10 @@
-from collections import namedtuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from . import rnn
+from .data import mrae_output
 
 from warnings import warn
-
-# output collection structure (named tuple, good for potential DDP)
-mrae_output = namedtuple(
-    'mrae_0utput',
-    [
-        'output',
-        'block_output',
-        'hidden',
-        'decoder_ic',
-        'decoder_ic_kl_div',
-        'decoder_l2'
-        ]
-)
 
 class MRAE(nn.Module):
 
@@ -74,8 +61,8 @@ class MRAE(nn.Module):
         block_output = torch.stack(block_output,dim=-1)
         block_hidden = torch.stack(block_hidden,dim=-1)
         block_dec_ic = torch.stack(block_dec_ic,dim=-1)
-        # block_dec_ic_kl_div = torch.stack(block_dec_ic_kl_div,dim=-1)
-        # block_dec_l2 = torch.stack(block_dec_l2,dim=-1)
+        block_dec_ic_kl_div = torch.stack(block_dec_ic_kl_div,dim=-1)
+        block_dec_l2 = torch.stack(block_dec_l2,dim=-1)
         if self.num_blocks > 1:
             output = self.block_hidden_mix(block_hidden.reshape(batch_size,seq_len,-1))
         else:
@@ -88,6 +75,9 @@ class MRAE(nn.Module):
             decoder_ic=block_dec_ic,
             decoder_ic_kl_div=block_dec_ic_kl_div, 
             decoder_l2=block_dec_l2)
+
+    def get_optimizer(self):
+        pass
 
     def get_checkpoint(self):
         pass

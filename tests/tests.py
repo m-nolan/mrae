@@ -1,7 +1,7 @@
 from msilib import sequence
 import unittest
 import torch
-from mrae import MRAE, rnn
+from mrae import MRAE, objective, rnn
 
 class RAETests(unittest.TestCase):
     
@@ -30,8 +30,8 @@ class RAETests(unittest.TestCase):
         self.assertEqual(mrae_output.block_output.size(),(batch_size,sequence_length,input_size,num_blocks))
         self.assertEqual(mrae_output.hidden.size(),(batch_size,sequence_length,decoder_size,num_blocks))
         self.assertEqual(mrae_output.decoder_ic.size(),(batch_size,decoder_size,num_blocks))
-        self.assertEqual(len(mrae_output.decoder_ic_kl_div),num_blocks)
-        self.assertEqual(len(mrae_output.decoder_l2),num_blocks)
+        self.assertEqual(mrae_output.decoder_ic_kl_div.numel(),num_blocks)
+        self.assertEqual(mrae_output.decoder_l2.numel(),num_blocks)
 
     def test_rae_block(self):
         input_size = 10
@@ -103,6 +103,53 @@ class RAETests(unittest.TestCase):
         dec_out = dec(input,h0)
 
         self.assertEqual(dec_out.size(),(batch_size,sequence_length,hidden_size))
+
+class OptimizationTests(unittest.TestCase):
+
+    def test_objective(self):
+        # do a forward pass of the model then a forward pass of the objective class, check outputs
+        input_size = 10
+        num_blocks = 5
+        encoder_size = 20
+        decoder_size = 20
+        dropout = 0.3
+
+        mrae = MRAE.MRAE(
+            input_size=input_size,
+            encoder_size=encoder_size,
+            decoder_size=decoder_size,
+            num_blocks=num_blocks,
+            dropout=dropout
+        )
+
+        kl_div_scale = 0.2
+        l2_scale = 0.2
+        mrae_obj = objective.MRAEObjective(
+            kl_div_scale = kl_div_scale,
+            l2_scale = l2_scale
+        )
+
+        # forward pass
+        batch_size = 40
+        sequence_length = 50
+        input = torch.randn(batch_size,sequence_length,input_size,num_blocks)
+        target = torch.randn(batch_size,sequence_length,input_size)
+        mrae_output = mrae(input)
+
+        output_obj, block_obj = mrae_obj(mrae_output,target,input)
+
+        self.assertTrue(output_obj > 0)
+        self.assertEqual(output_obj.numel(),1)
+        self.assertTrue((block_obj > 0).all())
+        self.assertEqual(block_obj.numel(),num_blocks)
+
+    def test_scheduler(self):
+        # create scheduler to update objective parameters, test update
+        pass
+
+    def test_optimizer(self):
+        # test parameter updates in optimizer backward pass for multiblock model
+        pass
 
 
 class RNNTests(unittest.TestCase):
