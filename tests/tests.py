@@ -122,11 +122,11 @@ class OptimizationTests(unittest.TestCase):
             dropout=dropout
         )
 
-        kl_div_scale = 0.2
-        l2_scale = 0.2
+        kl_div_scale_max = 0.2
+        l2_scale_max = 0.2
         mrae_obj = objective.MRAEObjective(
-            kl_div_scale = kl_div_scale,
-            l2_scale = l2_scale
+            kl_div_scale_max = kl_div_scale_max,
+            l2_scale_max = l2_scale_max
         )
 
         # forward pass
@@ -162,11 +162,11 @@ class OptimizationTests(unittest.TestCase):
             max_grad_norm=max_grad_norm
         )
 
-        kl_div_scale = 0.2
-        l2_scale = 0.2
+        kl_div_scale_max = 0.2
+        l2_scale_max = 0.2
         mrae_obj = objective.MRAEObjective(
-            kl_div_scale = kl_div_scale,
-            l2_scale = l2_scale
+            kl_div_scale_max = kl_div_scale_max,
+            l2_scale_max = l2_scale_max
         )
 
         # forward pass
@@ -201,12 +201,16 @@ class OptimizationTests(unittest.TestCase):
             max_grad_norm=max_grad_norm
         )
 
-        kl_div_scale = 0.2
-        l2_scale = 0.2
+        kl_div_scale_max = 0.2
+        l2_scale_max = 0.2
+        max_at_epoch = 10
         mrae_obj = objective.MRAEObjective(
-            kl_div_scale = kl_div_scale,
-            l2_scale = l2_scale
+            kl_div_scale_max = kl_div_scale_max,
+            l2_scale_max = l2_scale_max,
+            max_at_epoch = max_at_epoch
         )
+
+        epoch_idx = 0
 
         # forward pass
         batch_size = 40
@@ -224,6 +228,12 @@ class OptimizationTests(unittest.TestCase):
         mrae.backward(output_obj, block_obj)
         mrae.step_schedulers(output_obj, block_obj)
 
+        # test objective parameter update
+        epoch_idx += 1
+        mrae_obj.step(epoch_idx)
+
+        self.assertAlmostEqual(mrae_obj.kl_div_scale,kl_div_scale_max * epoch_idx / max_at_epoch)
+        self.assertAlmostEqual(mrae_obj.l2_scale,l2_scale_max * epoch_idx / max_at_epoch)
 class RNNTests(unittest.TestCase):
 
     def test_gru_modified(self):

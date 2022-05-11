@@ -7,11 +7,16 @@ from .data import mrae_output
 
 class MRAEObjective(nn.Module):
 
-    def __init__(self,kl_div_scale,l2_scale):
+    def __init__(self,kl_div_scale_max,l2_scale_max,max_at_epoch=100):
         super().__init__()
         # these values are updated by the scheduler during model optimization
-        self.kl_div_scale = kl_div_scale
-        self.l2_scale = l2_scale
+        self.kl_div_scale_max = kl_div_scale_max
+        self.l2_scale_max = l2_scale_max
+        self.max_at_epoch = max_at_epoch
+
+        # initialize scale at zero to begin training
+        self.kl_div_scale = 0.
+        self.l2_scale = 0.
 
     def forward(self, mrae_output:mrae_output, target:torch.Tensor, block_target:torch.Tensor):
         out = mrae_output.output
@@ -31,7 +36,9 @@ class MRAEObjective(nn.Module):
 
     def step(self,epoch_idx):
         # update objective regularization term scalars according to epoch count
-        pass
+        # should this object be keeping count of the current epoch?
+        self.kl_div_scale = self.kl_div_scale_max * min(1, epoch_idx/self.max_at_epoch)
+        self.l2_scale = self.l2_scale_max * min(1, epoch_idx/self.max_at_epoch)
 
 # class MRAEScheduler(ReduceLROnPlateau):
 
