@@ -1,6 +1,7 @@
 import unittest
 import torch
-from mrae import MRAE, objective, rnn
+import h5py
+from mrae import data, MRAE, objective, rnn
 
 class RAETests(unittest.TestCase):
     
@@ -236,8 +237,53 @@ class OptimizationTests(unittest.TestCase):
 
 class DataloaderTests(unittest.TestCase):
 
-    def test_multiblock_tensor_dataloader(self):
-        pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.n_band = 3
+        target_dataset_path = r'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_test'
+        band_dataset_path = fr'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_nband{self.n_band}_test'
+        target_data_record = h5py.File(target_dataset_path,'r')
+        band_data_record = h5py.File(band_dataset_path,'r')
+        self.num_trials, self.sequence_length, self.num_ch = target_data_record['ecog'].shape
+
+        # base dataset for multiband ecog datasets
+        self.ds = data.MultiblockTensorDataset(
+            target_data_record=target_data_record,
+            band_data_record=band_data_record,
+            n_band=self.n_band,
+        )
+
+        # train, valid, and test dataloaders
+        self.batch_size = 10
+        self.train_dl, self.valid_dl, self.test_dl = data.get_partition_dataloaders(
+            ds=self.ds,
+            batch_size=self.batch_size
+        )
+
+    def test_multiblock_tensor_dataset(self):
+        input, target = self.ds[0]
+        
+        self.assertEqual(input.size(),(self.sequence_length,self.num_ch,self.n_band))
+        self.assertEqual(target.size(),(self.sequence_length,self.num_ch))
+
+    def test_partition_dataloader(self):
+        #TODO: fix this weird added leading dimension bug
+        input_train_batch, target_train_batch = next(iter(self.train_dl))
+        input_train_batch = input_train_batch.squeeze()
+        target_train_batch = target_train_batch.squeeze()
+        input_valid_batch, target_valid_batch = next(iter(self.valid_dl))
+        input_valid_batch = input_valid_batch.squeeze()
+        target_valid_batch = target_valid_batch.squeeze()
+        input_test_batch, target_test_batch = next(iter(self.test_dl))
+        input_test_batch = input_test_batch.squeeze()
+        target_test_batch = target_test_batch.squeeze()
+
+        self.assertEqual(input_train_batch.size(),(self.batch_size,self.sequence_length,self.num_ch,self.n_band))
+        self.assertEqual(input_valid_batch.size(),(self.batch_size,self.sequence_length,self.num_ch,self.n_band))
+        self.assertEqual(input_test_batch.size(),(self.batch_size,self.sequence_length,self.num_ch,self.n_band))
+        self.assertEqual(target_train_batch.size(),(self.batch_size,self.sequence_length,self.num_ch))
+        self.assertEqual(target_valid_batch.size(),(self.batch_size,self.sequence_length,self.num_ch))
+        self.assertEqual(target_test_batch.size(),(self.batch_size,self.sequence_length,self.num_ch))
 
 class RNNTests(unittest.TestCase):
 

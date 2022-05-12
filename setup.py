@@ -8,7 +8,8 @@ with open("README.md", "r") as f:
 
 install_requires = [
     'torch',
-    'numpy'
+    'numpy',
+    'h5py'
 ]
 
 setuptools.setup(
