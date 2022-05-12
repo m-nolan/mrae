@@ -1,7 +1,14 @@
 import unittest
+import os
 import torch
 import h5py
 from mrae import data, MRAE, objective, rnn
+
+test_dir = os.path.dirname(__file__)
+data_dir = os.path.join(test_dir,'data')
+write_dir = os.path.join(test_dir,'tmp')
+if not os.path.exists(write_dir):
+    os.mkdir(write_dir)
 
 class RAETests(unittest.TestCase):
     
@@ -135,8 +142,8 @@ class OptimizationTests(unittest.TestCase):
         self.mrae.configure_schedulers()
 
         # testing dataset + training loop
-        target_dataset_path = r'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_test'
-        band_dataset_path = fr'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_nband{self.num_blocks}_test'
+        target_dataset_path = os.path.join(data_dir,'gw_250_test')
+        band_dataset_path = os.path.join(data_dir,f'gw_250_nband{self.num_blocks}_test')
         target_data_record = h5py.File(target_dataset_path,'r')
         band_data_record = h5py.File(band_dataset_path,'r')
         ds = data.MultiblockTensorDataset(
@@ -308,8 +315,8 @@ class DataloaderTests(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.n_band = 3
-        target_dataset_path = r'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_test'
-        band_dataset_path = fr'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_nband{self.n_band}_test'
+        target_dataset_path = os.path.join(data_dir,'gw_250_test')
+        band_dataset_path = os.path.join(data_dir,f'gw_250_nband{self.n_band}_test')
         target_data_record = h5py.File(target_dataset_path,'r')
         band_data_record = h5py.File(band_dataset_path,'r')
         self.num_trials, self.sequence_length, self.num_ch = target_data_record['ecog'].shape
