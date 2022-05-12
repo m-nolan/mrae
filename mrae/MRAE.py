@@ -104,6 +104,12 @@ class MRAE(nn.Module):
                 max_norm=self.max_grad_norm
             )
 
+    def train(self, trail_dl, valid_dl, max_epochs=250, ):
+        pass
+
+    def eval(self, test_dl):
+        pass
+
     def step_schedulers(self, output_obj, block_obj):
         # call this after validation step
         for b_idx in range(self.num_blocks):

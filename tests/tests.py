@@ -1,4 +1,3 @@
-from msilib import sequence
 import unittest
 import torch
 from mrae import MRAE, objective, rnn
@@ -234,6 +233,12 @@ class OptimizationTests(unittest.TestCase):
 
         self.assertAlmostEqual(mrae_obj.kl_div_scale,kl_div_scale_max * epoch_idx / max_at_epoch)
         self.assertAlmostEqual(mrae_obj.l2_scale,l2_scale_max * epoch_idx / max_at_epoch)
+
+class DataloaderTests(unittest.TestCase):
+
+    def test_multiblock_tensor_dataloader(self):
+        pass
+
 class RNNTests(unittest.TestCase):
 
     def test_gru_modified(self):
