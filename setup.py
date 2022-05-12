@@ -7,7 +7,8 @@ with open("README.md", "r") as f:
     long_description = f.read()
 
 install_requires = [
-    'torch'
+    'torch',
+    'numpy'
 ]
 
 setuptools.setup(

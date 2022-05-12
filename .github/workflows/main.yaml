@@ -21,4 +21,4 @@ jobs:
           pip install -e .
       - name: Test with pytest
         run: |
-          pytest --junitxml=junit/test-results.xml --cov=aopy --cov-report=xml --cov-report=html
+          pytest --junitxml=junit/test-results.xml --cov=mrae --cov-report=xml --cov-report=html
