@@ -106,82 +106,110 @@ class RAETests(unittest.TestCase):
 
 class OptimizationTests(unittest.TestCase):
 
-    def test_objective_and_optimizers(self):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+
         # do a forward pass of the model then a forward pass of the objective class, check outputs
-        input_size = 10
-        num_blocks = 5
+        self.input_size = 10
+        self.num_blocks = 5
         encoder_size = 20
         decoder_size = 20
         dropout = 0.3
 
-        mrae = MRAE.MRAE(
-            input_size=input_size,
+        self.mrae = MRAE.MRAE(
+            input_size=self.input_size,
             encoder_size=encoder_size,
             decoder_size=decoder_size,
-            num_blocks=num_blocks,
+            num_blocks=self.num_blocks,
             dropout=dropout
         )
 
         kl_div_scale_max = 0.2
         l2_scale_max = 0.2
-        mrae_obj = objective.MRAEObjective(
+        self.mrae_obj = objective.MRAEObjective(
             kl_div_scale_max = kl_div_scale_max,
             l2_scale_max = l2_scale_max
         )
+        self.mrae.configure_optimizers()
+        self.mrae.configure_schedulers()
 
-        # forward pass
+    def test_objective_and_optimizers(self):
+        # do a forward pass of the model then a forward pass of the objective class, check outputs
         batch_size = 40
         sequence_length = 50
-        input = torch.randn(batch_size,sequence_length,input_size,num_blocks)
-        target = torch.randn(batch_size,sequence_length,input_size)
-        mrae_output = mrae(input)
+        input = torch.randn(batch_size,sequence_length,self.input_size,self.num_blocks)
+        target = torch.randn(batch_size,sequence_length,self.input_size)
+        mrae_output = self.mrae(input)
 
-        output_obj, block_obj = mrae_obj(mrae_output,target,input)
+        output_obj, block_obj = self.mrae_obj(mrae_output,target,input)
 
         self.assertTrue(output_obj > 0)
         self.assertEqual(output_obj.numel(),1)
         self.assertTrue((block_obj > 0).all())
-        self.assertEqual(block_obj.numel(),num_blocks)
+        self.assertEqual(block_obj.numel(),self.num_blocks)
 
     def test_optimizer(self):
         # test parameter updates in optimizer backward pass for multiblock model
         # do a forward pass of the model then a forward pass of the objective class, check outputs
-        input_size = 10
-        num_blocks = 1
-        encoder_size = 20
-        decoder_size = 20
-        dropout = 0.3
-        max_grad_norm = 3.0
-
-        mrae = MRAE.MRAE(
-            input_size=input_size,
-            encoder_size=encoder_size,
-            decoder_size=decoder_size,
-            num_blocks=num_blocks,
-            dropout=dropout,
-            max_grad_norm=max_grad_norm
-        )
-
-        kl_div_scale_max = 0.2
-        l2_scale_max = 0.2
-        mrae_obj = objective.MRAEObjective(
-            kl_div_scale_max = kl_div_scale_max,
-            l2_scale_max = l2_scale_max
-        )
-
         # forward pass
         batch_size = 40
         sequence_length = 50
-        input = torch.randn(batch_size,sequence_length,input_size,num_blocks)
-        target = torch.randn(batch_size,sequence_length,input_size)
-        mrae_output = mrae(input)
+        input = torch.randn(batch_size,sequence_length,self.input_size,self.num_blocks)
+        target = torch.randn(batch_size,sequence_length,self.input_size)
+        mrae_output = self.mrae(input)
 
-        output_obj, block_obj = mrae_obj(mrae_output,target,input)
-        mrae.configure_optimizers()
+        output_obj, block_obj = self.mrae_obj(mrae_output,target,input)
 
         # backward pass over blocks, then output - check 1-block case with output ID layer
         # model backward pass call includes zero_grad and clip calls
-        mrae.backward(output_obj, block_obj)
+        self.mrae.backward(output_obj, block_obj)
+        #TODO: add an assert call here, not it's just "passes if it doesn't crash" and that's not enough
+
+    def test_train_step(self):
+        batch_size = 40
+        sequence_length = 50
+        epoch_idx = 0
+        input = torch.randn(batch_size,sequence_length,self.input_size,self.num_blocks)
+        target = torch.randn(batch_size,sequence_length,self.input_size)
+
+        self.mrae.train()
+        mrae_output, train_output_loss, train_block_loss = self.mrae.train_step(
+            epoch_idx, input, target, self.mrae_obj
+        )
+
+        # check loss outputs
+        self.assertTrue(train_output_loss > 0)
+        self.assertEqual(train_output_loss.numel(), 1)
+        self.assertTrue((train_block_loss > 0).all())
+        self.assertEqual(train_block_loss.numel(),self.num_blocks)
+
+    def test_valid_step(self):
+        batch_size = 40
+        sequence_length = 50
+        epoch_idx = 10 # causes checkable obj param update in .valid_step()
+        input = torch.randn(batch_size,sequence_length,self.input_size,self.num_blocks)
+        target = torch.randn(batch_size,sequence_length,self.input_size)
+
+        self.mrae.eval()
+        mrae_output, valid_output_loss, valid_block_loss = self.mrae.valid_step(
+            epoch_idx, input, target, self.mrae_obj
+        )
+
+        # check loss outputs
+        self.assertTrue(valid_output_loss > 0)
+        self.assertEqual(valid_output_loss.numel(), 1)
+        self.assertTrue((valid_block_loss > 0).all())
+        self.assertEqual(valid_block_loss.numel(),self.num_blocks)
+
+        # check scheduler weight updates
+        self.assertAlmostEqual(
+            self.mrae_obj.kl_div_scale,
+            self.mrae_obj.kl_div_scale_max * epoch_idx / self.mrae_obj.max_at_epoch
+        )
+        self.assertAlmostEqual(
+            self.mrae_obj.l2_scale,
+            self.mrae_obj.l2_scale_max * epoch_idx / self.mrae_obj.max_at_epoch
+        )
 
     def test_scheduler(self):
         # create scheduler to update objective parameters, test update
@@ -278,12 +306,30 @@ class DataloaderTests(unittest.TestCase):
         input_test_batch = input_test_batch.squeeze()
         target_test_batch = target_test_batch.squeeze()
 
-        self.assertEqual(input_train_batch.size(),(self.batch_size,self.sequence_length,self.num_ch,self.n_band))
-        self.assertEqual(input_valid_batch.size(),(self.batch_size,self.sequence_length,self.num_ch,self.n_band))
-        self.assertEqual(input_test_batch.size(),(self.batch_size,self.sequence_length,self.num_ch,self.n_band))
-        self.assertEqual(target_train_batch.size(),(self.batch_size,self.sequence_length,self.num_ch))
-        self.assertEqual(target_valid_batch.size(),(self.batch_size,self.sequence_length,self.num_ch))
-        self.assertEqual(target_test_batch.size(),(self.batch_size,self.sequence_length,self.num_ch))
+        self.assertEqual(
+            input_train_batch.size(),
+            (self.batch_size,self.sequence_length,self.num_ch,self.n_band)
+        )
+        self.assertEqual(
+            input_valid_batch.size(),
+            (self.batch_size,self.sequence_length,self.num_ch,self.n_band)
+        )
+        self.assertEqual(
+            input_test_batch.size(),
+            (self.batch_size,self.sequence_length,self.num_ch,self.n_band)
+        )
+        self.assertEqual(
+            target_train_batch.size(),
+            (self.batch_size,self.sequence_length,self.num_ch)
+        )
+        self.assertEqual(
+            target_valid_batch.size(),
+            (self.batch_size,self.sequence_length,self.num_ch)
+        )
+        self.assertEqual(
+            target_test_batch.size(),
+            (self.batch_size,self.sequence_length,self.num_ch)
+        )
 
 class RNNTests(unittest.TestCase):
 

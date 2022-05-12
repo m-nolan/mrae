@@ -104,11 +104,33 @@ class MRAE(nn.Module):
                 max_norm=self.max_grad_norm
             )
 
-    def train(self, trail_dl, valid_dl, max_epochs=250, ):
+    def _step(self,input,target,obj):
+        mrae_output = self(input)
+        output_loss, block_loss = obj(mrae_output, target, input)
+        return output_loss, block_loss
+
+    def train_step(self, epoch_idx, input, target, obj):
+        assert self.training, "Model must be in training mode before training"
+        train_output_loss, train_block_loss = self._step(input,target,obj)
+        self.backward(train_output_loss, train_block_loss)
+        self.step_optimizers()
+        return mrae_output, train_output_loss, train_block_loss
+
+    def valid_step(self, epoch_idx, input, target, obj):
+        assert ~self.training, "Model must be in evaluation mode before training"
+        valid_output_loss, valid_block_loss = self._step(input,target,obj)
+        self.step_schedulers(valid_output_loss, valid_block_loss)
+        obj.step(epoch_idx) # does this update the obj outside the scope of this method?
+        return mrae_output, valid_output_loss, valid_block_loss
+
+    def test_step(self, epoch_idx, input, target):
+        #TODO: implement a test step evaluation function to run for a given batch
         pass
 
-    def eval(self, test_dl):
-        pass
+    def step_optimizers(self):
+        for b_idx in range(self.num_blocks):
+            self.block_opt[b_idx].step()
+        self.output_opt.step()
 
     def step_schedulers(self, output_obj, block_obj):
         # call this after validation step
