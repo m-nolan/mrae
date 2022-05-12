@@ -2,15 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from tqdm import tqdm
 from . import rnn
 from .data import mrae_output
-from .objective import backward_on_block_params
+from .objective import mrae_loss, backward_on_block_params
 
 from warnings import warn
 
 class MRAE(nn.Module):
 
-    def __init__(self, input_size, encoder_size, decoder_size, num_blocks, dropout, num_layers_encoder=1, bidirectional_encoder=True, max_grad_norm=5.0, rand_samp=True, device='cpu'):
+    def __init__(self, input_size, encoder_size, decoder_size, num_blocks, 
+                dropout, num_layers_encoder=1, bidirectional_encoder=True, 
+                max_grad_norm=5.0, rand_samp=True, device='cpu'):
         super().__init__()
         self.input_size = input_size
         self.num_blocks = num_blocks
@@ -104,24 +107,100 @@ class MRAE(nn.Module):
                 max_norm=self.max_grad_norm
             )
 
+    def fit(self,train_dl,valid_dl,objective,max_epochs=1000):
+        for epoch_idx in tqdm(range(max_epochs)):
+            batch_train_output_loss = []
+            batch_train_block_loss = []
+            batch_train_kl_div = []
+            batch_train_l2 = []
+            batch_valid_output_loss = []
+            batch_valid_block_loss = []
+            batch_valid_kl_div = []
+            batch_valid_l2 = []
+
+            self.train()
+            for input, target in train_dl:
+                input = input.squeeze()
+                target = target.squeeze()
+                mrae_out, train_output_loss, train_block_loss = self.train_step(
+                    epoch_idx,input,target,objective
+                )
+                # add collecting mechanism for training loss values
+                batch_train_output_loss.append(train_output_loss)
+                batch_train_block_loss.append(train_block_loss)
+                batch_train_kl_div.append(mrae_out.decoder_ic_kl_div)
+                batch_train_l2.append(mrae_out.decoder_l2)
+
+            # average training loss value for the epoch
+            epoch_train_loss_dict = self.compute_epoch_loss(
+                batch_train_output_loss,
+                batch_train_block_loss,
+                batch_train_kl_div,
+                batch_train_l2
+            )
+            self.log_loss(epoch_train_loss_dict,'train')
+
+            self.eval()
+            for input, target in valid_dl:
+                input = input.squeeze()
+                target = target.squeeze()
+                mrae_out, valid_output_loss, valid_block_loss = self.valid_step(
+                    epoch_idx,input,target,objective
+                )
+                # add collection mechanism for validation loss values
+                batch_valid_output_loss.append(valid_output_loss)
+                batch_valid_block_loss.append(valid_block_loss)
+                batch_valid_kl_div.append(mrae_out.decoder_ic_kl_div)
+                batch_valid_l2.append(mrae_out.decoder_l2)
+
+            # log average validation loss value for the epoch
+            epoch_valid_loss_dict = self.compute_epoch_loss(
+                batch_valid_output_loss,
+                batch_valid_block_loss,
+                batch_valid_kl_div,
+                batch_valid_l2
+            )
+            self.log_loss(epoch_valid_loss_dict,'valid')
+
+            # step schedulers
+            self.step_schedulers(valid_output_loss, valid_block_loss)
+            objective.step(epoch_idx)
+
+    @staticmethod
+    def compute_epoch_loss(output_loss_list, block_loss_list, kl_div_list, l2_list):
+        return mrae_loss(
+            output_loss=torch.tensor(output_loss_list).mean(),
+            block_loss=torch.stack(block_loss_list).mean(dim=0),
+            kl_div=torch.stack(kl_div_list).mean(dim=0),
+            l2=torch.stack(l2_list).mean(dim=0)
+        )
+
+    def evaluate(self,test_dl,objective):
+        self.eval()
+        for input, target in test_dl:
+            input = input.squeeze()
+            target = target.squeeze()
+            mrae_output, test_output_loss, test_block_loss = self.test_step(
+                input,target,objective
+            )
+
     def _step(self,input,target,obj):
-        mrae_output = self(input)
-        output_loss, block_loss = obj(mrae_output, target, input)
-        return output_loss, block_loss
+        mrae_out = self(input)
+        output_loss, block_loss = obj(mrae_out, target, input)
+        return mrae_out, output_loss, block_loss
 
     def train_step(self, epoch_idx, input, target, obj):
         assert self.training, "Model must be in training mode before training"
-        train_output_loss, train_block_loss = self._step(input,target,obj)
+        mrae_out, train_output_loss, train_block_loss = self._step(input,target,obj)
         self.backward(train_output_loss, train_block_loss)
         self.step_optimizers()
-        return mrae_output, train_output_loss, train_block_loss
+        return mrae_out, train_output_loss, train_block_loss
 
     def valid_step(self, epoch_idx, input, target, obj):
         assert ~self.training, "Model must be in evaluation mode before training"
-        valid_output_loss, valid_block_loss = self._step(input,target,obj)
-        self.step_schedulers(valid_output_loss, valid_block_loss)
+        mrae_out, valid_output_loss, valid_block_loss = self._step(input,target,obj)
         obj.step(epoch_idx) # does this update the obj outside the scope of this method?
-        return mrae_output, valid_output_loss, valid_block_loss
+        return mrae_out, valid_output_loss, valid_block_loss
 
     def test_step(self, epoch_idx, input, target):
         #TODO: implement a test step evaluation function to run for a given batch
@@ -174,6 +253,10 @@ class MRAE(nn.Module):
     def configure_schedulers(self):
         self.output_sch, self.block_sch = self.get_schedulers()
 
+    def log_loss(self, loss:mrae_loss, mode:str):
+        # log loss_dict k, v pairs to tensorboard, wandb, whatever
+        pass
+
     def get_checkpoint(self):
         pass
 
@@ -183,7 +266,9 @@ class MRAE(nn.Module):
 
 class RAE_block(nn.Module):
 
-    def __init__(self, input_size, encoder_size, decoder_size, dropout, num_layers_encoder=1, bidirectional_encoder=True, decoder_ic_prior_params={}, rand_samp=True):
+    def __init__(self, input_size, encoder_size, decoder_size, dropout, 
+                num_layers_encoder=1, bidirectional_encoder=True, 
+                decoder_ic_prior_params={}, rand_samp=True):
         super().__init__()
 
         self.input_size = input_size
@@ -245,7 +330,8 @@ class RAE_block(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, input_size, output_size, hidden_size, dropout, num_layers=1, bidirectional=True):
+    def __init__(self, input_size, output_size, hidden_size, dropout, 
+                num_layers=1, bidirectional=True):
         super().__init__()
         self.input_size     = input_size
         self.output_size    = output_size
@@ -270,7 +356,10 @@ class Encoder(nn.Module):
         if gru_output_size == 2 * output_size:
             self.linear_out = nn.Identity()
         else:
-            self.linear_out = nn.Linear(in_features=gru_output_size,out_features=2*output_size)
+            self.linear_out = nn.Linear(
+                in_features=gru_output_size,
+                out_features=2*output_size
+            )
 
     def forward(self, input):
         batch_size, seq_len, input_size = input.size()
@@ -323,7 +412,11 @@ def sample_gaussian(mean, logvar):
         sample (torch.Tensor): tensor of gaussian samples
     """
     # Generate noise from standard gaussian
-    eps = torch.randn(mean.shape, requires_grad=False, dtype=torch.float32).to(torch.get_default_dtype()).to(mean.device)
+    eps = torch.randn(
+        mean.shape, 
+        requires_grad=False, 
+        dtype=torch.float32
+    ).to(torch.get_default_dtype()).to(mean.device)
     # Scale and shift by mean and standard deviation
     return torch.exp(logvar*0.5)*eps + mean
 

@@ -111,7 +111,8 @@ class OptimizationTests(unittest.TestCase):
 
         # do a forward pass of the model then a forward pass of the objective class, check outputs
         self.input_size = 10
-        self.num_blocks = 5
+        self.num_blocks = 3
+        batch_size = 10
         encoder_size = 20
         decoder_size = 20
         dropout = 0.3
@@ -132,6 +133,29 @@ class OptimizationTests(unittest.TestCase):
         )
         self.mrae.configure_optimizers()
         self.mrae.configure_schedulers()
+
+        # testing dataset + training loop
+        target_dataset_path = r'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_test'
+        band_dataset_path = fr'D:\Users\mickey\aoLab\code\mrae\tests\data\gw_250_nband{self.num_blocks}_test'
+        target_data_record = h5py.File(target_dataset_path,'r')
+        band_data_record = h5py.File(band_dataset_path,'r')
+        ds = data.MultiblockTensorDataset(
+            target_data_record=target_data_record,
+            band_data_record=band_data_record,
+            n_band = self.num_blocks
+        )
+        self.train_dl, self.valid_dl, self.test_dl = data.get_partition_dataloaders(
+            ds=ds,
+            batch_size=batch_size
+        )
+
+        self.mrae_ecog = MRAE.MRAE(
+            input_size=ds.target_data_record['ecog'].shape[-1],
+            encoder_size=encoder_size,
+            decoder_size=decoder_size,
+            num_blocks=self.num_blocks,
+            dropout=dropout,
+        )
 
     def test_objective_and_optimizers(self):
         # do a forward pass of the model then a forward pass of the objective class, check outputs
@@ -202,13 +226,14 @@ class OptimizationTests(unittest.TestCase):
         self.assertEqual(valid_block_loss.numel(),self.num_blocks)
 
         # check scheduler weight updates
+        epoch = epoch_idx+1
         self.assertAlmostEqual(
             self.mrae_obj.kl_div_scale,
-            self.mrae_obj.kl_div_scale_max * epoch_idx / self.mrae_obj.max_at_epoch
+            self.mrae_obj.kl_div_scale_max * epoch / self.mrae_obj.max_at_epoch
         )
         self.assertAlmostEqual(
             self.mrae_obj.l2_scale,
-            self.mrae_obj.l2_scale_max * epoch_idx / self.mrae_obj.max_at_epoch
+            self.mrae_obj.l2_scale_max * epoch / self.mrae_obj.max_at_epoch
         )
 
     def test_scheduler(self):
@@ -259,9 +284,24 @@ class OptimizationTests(unittest.TestCase):
         # test objective parameter update
         epoch_idx += 1
         mrae_obj.step(epoch_idx)
+        epoch = epoch_idx + 1
 
-        self.assertAlmostEqual(mrae_obj.kl_div_scale,kl_div_scale_max * epoch_idx / max_at_epoch)
-        self.assertAlmostEqual(mrae_obj.l2_scale,l2_scale_max * epoch_idx / max_at_epoch)
+        self.assertAlmostEqual(mrae_obj.kl_div_scale,kl_div_scale_max * epoch / max_at_epoch)
+        self.assertAlmostEqual(mrae_obj.l2_scale,l2_scale_max * epoch / max_at_epoch)
+
+    def test_fit(self):
+        max_epochs = 2
+        self.mrae_ecog.configure_optimizers()
+        self.mrae_ecog.configure_schedulers()
+        self.mrae_ecog.fit(
+            self.train_dl,
+            self.valid_dl,
+            self.mrae_obj,
+            max_epochs=max_epochs
+        )
+
+    def test_evaluate(self):
+        pass
 
 class DataloaderTests(unittest.TestCase):
 
