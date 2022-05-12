@@ -1,5 +1,7 @@
 from collections import namedtuple
 import torch
+from torch.utils.data import Subset, DataLoader
+from torch.utils.data.sampler import BatchSampler, SequentialSampler
 import torch.nn as nn
 import numpy as np
 
@@ -79,3 +81,34 @@ def get_trial_location_view(record):
             record['trial_start_idx'][()][:,None]
         ]
     ).view(view_def)
+
+def get_partition_dataloaders(ds, batch_size, partition={'train': 0.7, 'valid': 0.2, 'test': 0.1}):
+    num_trials = len(ds)
+    num_train_trials = round(num_trials * partition['train'])
+    num_valid_trials = round(num_trials * partition['valid'])
+    num_test_trials = round(num_trials * partition['test'])
+
+    train_trial_idx = np.arange(num_trials)[:num_train_trials]
+    valid_trial_idx = np.arange(num_trials)[num_train_trials:(num_train_trials+num_valid_trials)]
+    test_trial_idx = np.arange(num_trials)[-num_test_trials:]
+
+    train_dl = subset_batch_dataloader(ds, train_trial_idx, batch_size)
+    valid_dl = subset_batch_dataloader(ds, valid_trial_idx, batch_size)
+    test_dl = subset_batch_dataloader(ds, test_trial_idx, batch_size)
+
+    return train_dl, valid_dl, test_dl
+
+def subset_batch_dataloader(ds,subset_idx,batch_size):
+    subset_ds = Subset(ds,subset_idx)
+    subset_sampler = BatchSampler(
+        SequentialSampler(subset_ds),
+        batch_size=batch_size,
+        drop_last=True
+    )
+    return DataLoader(subset_ds, sampler=subset_sampler)
+
+# valid_samp  = torch.utils.data.sampler.BatchSampler(
+#         torch.utils.data.sampler.SequentialSampler(valid_ds),
+#         batch_size = batch_size,
+#         drop_last = True
+#     )

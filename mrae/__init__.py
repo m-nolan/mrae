@@ -1,3 +1,3 @@
 # __init__.py
 
-from . import data, MRAE, rnn
+from . import data, MRAE, objective, rnn

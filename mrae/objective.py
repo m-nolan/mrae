@@ -1,3 +1,4 @@
+from collections import namedtuple
 import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -5,6 +6,16 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import mrae
 from .data import mrae_output
 
+# loss collection structure
+mrae_loss = namedtuple(
+    'mrae_loss',
+    [
+        'output_loss',
+        'block_loss',
+        'kl_div',
+        'l2'
+    ]
+)
 class MRAEObjective(nn.Module):
 
     def __init__(self,kl_div_scale_max,l2_scale_max,max_at_epoch=100):
@@ -37,8 +48,9 @@ class MRAEObjective(nn.Module):
     def step(self,epoch_idx):
         # update objective regularization term scalars according to epoch count
         # should this object be keeping count of the current epoch?
-        self.kl_div_scale = self.kl_div_scale_max * min(1, epoch_idx/self.max_at_epoch)
-        self.l2_scale = self.l2_scale_max * min(1, epoch_idx/self.max_at_epoch)
+        epoch = epoch_idx + 1 # with zero-indexing, the first epoch wouldn't iterate this
+        self.kl_div_scale = self.kl_div_scale_max * min(1, epoch/self.max_at_epoch)
+        self.l2_scale = self.l2_scale_max * min(1, epoch/self.max_at_epoch)
 
 # class MRAEScheduler(ReduceLROnPlateau):
 

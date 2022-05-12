@@ -8,7 +8,8 @@ with open("README.md", "r") as f:
 
 install_requires = [
     'torch',
-    'numpy'
+    'numpy',
+    'h5py'
 ]
 
 setuptools.setup(
@@ -16,7 +17,7 @@ setuptools.setup(
     version="0.1.0",
     author="Michael Nolan",
     author_email="mnolan@uw.edu", # I am not eternal, please replace ~ MN
-    description="pytorch implementation of the M/RAE time series reconstruction model",
+    description="pytorch implementation of the MRAE time series reconstruction model",
     long_description=long_description,
     url='',
     packages=setuptools.find_packages(),
