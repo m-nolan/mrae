@@ -10,7 +10,9 @@ from warnings import warn
 
 class MRAE(nn.Module):
 
-    def __init__(self, input_size, encoder_size, decoder_size, num_blocks, dropout, num_layers_encoder=1, bidirectional_encoder=True, max_grad_norm=5.0, rand_samp=True, device='cpu'):
+    def __init__(self, input_size, encoder_size, decoder_size, num_blocks, 
+                dropout, num_layers_encoder=1, bidirectional_encoder=True, 
+                max_grad_norm=5.0, rand_samp=True, device='cpu'):
         super().__init__()
         self.input_size = input_size
         self.num_blocks = num_blocks
@@ -161,7 +163,9 @@ class MRAE(nn.Module):
 
 class RAE_block(nn.Module):
 
-    def __init__(self, input_size, encoder_size, decoder_size, dropout, num_layers_encoder=1, bidirectional_encoder=True, decoder_ic_prior_params={}, rand_samp=True):
+    def __init__(self, input_size, encoder_size, decoder_size, dropout, 
+                num_layers_encoder=1, bidirectional_encoder=True, 
+                decoder_ic_prior_params={}, rand_samp=True):
         super().__init__()
 
         self.input_size = input_size
@@ -223,7 +227,8 @@ class RAE_block(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, input_size, output_size, hidden_size, dropout, num_layers=1, bidirectional=True):
+    def __init__(self, input_size, output_size, hidden_size, dropout, 
+                num_layers=1, bidirectional=True):
         super().__init__()
         self.input_size     = input_size
         self.output_size    = output_size
