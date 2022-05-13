@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import numpy as np
 from tqdm import tqdm
 from . import rnn
 from .data import mrae_output
-from .objective import mrae_loss, backward_on_block_params
+from .objective import MRAELoss, backward_on_block_params
 
 from warnings import warn
 
@@ -108,7 +109,8 @@ class MRAE(nn.Module):
             )
 
     def fit(self,train_dl,valid_dl,objective,max_epochs=1000):
-        for epoch_idx in tqdm(range(max_epochs)):
+        min_f_int_width = int(np.ceil(np.log10(max_epochs)))
+        for epoch_idx in range(max_epochs):
             batch_train_output_loss = []
             batch_train_block_loss = []
             batch_train_kl_div = []
@@ -118,49 +120,63 @@ class MRAE(nn.Module):
             batch_valid_kl_div = []
             batch_valid_l2 = []
 
+            print(f'epoch:\t{epoch_idx+1}')
+
             self.train()
-            for input, target in train_dl:
+            train_pbar = tqdm(train_dl)
+            for input, target in train_pbar:
                 input = input.squeeze()
                 target = target.squeeze()
                 mrae_out, train_output_loss, train_block_loss = self.train_step(
                     epoch_idx,input,target,objective
                 )
+                train_pbar.set_description(f'tl {train_output_loss:0.3f} ')
                 # add collecting mechanism for training loss values
                 batch_train_output_loss.append(train_output_loss)
                 batch_train_block_loss.append(train_block_loss)
                 batch_train_kl_div.append(mrae_out.decoder_ic_kl_div)
                 batch_train_l2.append(mrae_out.decoder_l2)
+            train_pbar.close()
 
             # average training loss value for the epoch
-            epoch_train_loss_dict = self.compute_epoch_loss(
+            epoch_train_loss = self.compute_epoch_loss(
                 batch_train_output_loss,
                 batch_train_block_loss,
                 batch_train_kl_div,
                 batch_train_l2
             )
-            self.log_loss(epoch_train_loss_dict,'train')
+            print('training loss')
+            print(epoch_train_loss)
+            print('\n')
+            self.log_loss(epoch_train_loss,'train')
 
             self.eval()
+            valid_pbar = tqdm(valid_dl)
             for input, target in valid_dl:
                 input = input.squeeze()
                 target = target.squeeze()
                 mrae_out, valid_output_loss, valid_block_loss = self.valid_step(
                     epoch_idx,input,target,objective
                 )
+                valid_pbar.set_description(f'vl {valid_output_loss:0.3f} ')
                 # add collection mechanism for validation loss values
                 batch_valid_output_loss.append(valid_output_loss)
                 batch_valid_block_loss.append(valid_block_loss)
                 batch_valid_kl_div.append(mrae_out.decoder_ic_kl_div)
                 batch_valid_l2.append(mrae_out.decoder_l2)
+            valid_pbar.close()
 
             # log average validation loss value for the epoch
-            epoch_valid_loss_dict = self.compute_epoch_loss(
+            epoch_valid_loss = self.compute_epoch_loss(
                 batch_valid_output_loss,
                 batch_valid_block_loss,
                 batch_valid_kl_div,
                 batch_valid_l2
             )
-            self.log_loss(epoch_valid_loss_dict,'valid')
+            print('validation loss')
+            print(epoch_valid_loss)
+            print('\n')
+            self.log_loss(epoch_valid_loss,'valid')
 
             # step schedulers
             self.step_schedulers(valid_output_loss, valid_block_loss)
@@ -168,7 +184,7 @@ class MRAE(nn.Module):
 
     @staticmethod
     def compute_epoch_loss(output_loss_list, block_loss_list, kl_div_list, l2_list):
-        return mrae_loss(
+        return MRAELoss(
             output_loss=torch.tensor(output_loss_list).mean(),
             block_loss=torch.stack(block_loss_list).mean(dim=0),
             kl_div=torch.stack(kl_div_list).mean(dim=0),
@@ -253,7 +269,7 @@ class MRAE(nn.Module):
     def configure_schedulers(self):
         self.output_sch, self.block_sch = self.get_schedulers()
 
-    def log_loss(self, loss:mrae_loss, mode:str):
+    def log_loss(self, loss:MRAELoss, mode:str):
         # log loss_dict k, v pairs to tensorboard, wandb, whatever
         pass
 

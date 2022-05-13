@@ -1,21 +1,55 @@
 from collections import namedtuple
+from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import numpy as np
 
-import mrae
 from .data import mrae_output
 
-# loss collection structure
-mrae_loss = namedtuple(
-    'mrae_loss',
-    [
-        'output_loss',
-        'block_loss',
-        'kl_div',
-        'l2'
-    ]
-)
+# # loss collection structure
+# mrae_loss = namedtuple(
+#     'mrae_loss',
+#     [
+#         'output_loss',
+#         'block_loss',
+#         'kl_div',
+#         'l2'
+#     ]
+# )
+
+# def print_mrae_loss(loss:mrae_loss):
+#     pass
+
+@dataclass
+class MRAELoss():
+
+    output_loss: float
+    block_loss: None
+    kl_div: None
+    l2: None
+
+    def __init__(self, output_loss, block_loss, kl_div, l2):
+        self.output_loss = output_loss
+        self.block_loss = block_loss
+        self.kl_div = kl_div
+        self.l2 = l2
+        num_block = len(block_loss)
+        if num_block > 1:
+            total_loss = output_loss + block_loss.sum()
+        else:
+            total_loss = block_loss
+        self.total_loss = total_loss
+    
+    def __repr__(self):
+        #TODO: fix this format for 1-block models (output loss doesn't mean anything)
+        array_fmt = {'float_kind':lambda x: f'{x:0.3f}'}
+        return (f'total_loss:\t{self.total_loss.data.numpy():0.3f}\n'
+                f'output_loss:\t{self.output_loss.data.numpy():0.3f}\n'
+                f'block_loss:\t{np.array2string(self.block_loss.data.numpy(),formatter=array_fmt)}\n'
+                f'kl_div:\t\t{np.array2string(self.kl_div.data.numpy(),formatter=array_fmt)}\n'
+                f'l2:\t\t{np.array2string(self.l2.data.numpy(),formatter=array_fmt)}')
+
 class MRAEObjective(nn.Module):
 
     def __init__(self,kl_div_scale_max,l2_scale_max,max_at_epoch=100):
