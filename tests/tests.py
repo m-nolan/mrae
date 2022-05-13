@@ -1,5 +1,6 @@
 import unittest
 import os
+from nbformat import write
 import torch
 import h5py
 from mrae import data, MRAE, objective, rnn
@@ -120,16 +121,16 @@ class OptimizationTests(unittest.TestCase):
         self.input_size = 10
         self.num_blocks = 3
         batch_size = 10
-        encoder_size = 20
-        decoder_size = 20
-        dropout = 0.3
+        self.encoder_size = 20
+        self.decoder_size = 20
+        self.dropout = 0.3
 
         self.mrae = MRAE.MRAE(
             input_size=self.input_size,
-            encoder_size=encoder_size,
-            decoder_size=decoder_size,
+            encoder_size=self.encoder_size,
+            decoder_size=self.decoder_size,
             num_blocks=self.num_blocks,
-            dropout=dropout
+            dropout=self.dropout
         )
 
         kl_div_scale_max = 0.2
@@ -158,11 +159,42 @@ class OptimizationTests(unittest.TestCase):
 
         self.mrae_ecog = MRAE.MRAE(
             input_size=ds.target_data_record['ecog'].shape[-1],
-            encoder_size=encoder_size,
-            decoder_size=decoder_size,
+            encoder_size=self.encoder_size,
+            decoder_size=self.decoder_size,
             num_blocks=self.num_blocks,
-            dropout=dropout,
+            dropout=self.dropout,
         )
+
+    def test_checkpoint(self):
+        model_checkpoint_file_path = os.path.join(write_dir,'test_model.pt')
+        obj_checkpoint_file_path = os.path.join(write_dir,'test_objective.pt')
+        epoch = 0
+        test_training_loss = 5.0
+        test_validation_loss = 5.0
+        
+        # test save
+        self.mrae.save_checkpoint(
+            model_checkpoint_file_path,
+            epoch,
+            test_training_loss,
+            test_validation_loss
+        )
+        torch.save(self.mrae_obj.state_dict(),obj_checkpoint_file_path)
+
+        # test loading
+        mrae_test = MRAE.MRAE(self.input_size,self.encoder_size,self.decoder_size,self.num_blocks,self.dropout)
+        # note: the whole hyperparameterization needs to line up, so I need to save those out in a .yaml file as well
+        mrae_test.load_mrae_checkpoint(model_checkpoint_file_path)
+        mrae_obj_test_state_dict = torch.load(obj_checkpoint_file_path)
+        mrae_obj_test = objective.MRAEObjective(1.0,1.0)
+        mrae_obj_test.load_state_dict(mrae_obj_test_state_dict)
+
+        self.assertAlmostEqual(mrae_obj_test.kl_div_scale,self.mrae_obj.kl_div_scale)
+        self.assertTrue(
+            (mrae_test.state_dict()['block_hidden_mix.weight'] == 
+            self.mrae.state_dict()['block_hidden_mix.weight']).all()
+        )
+        # self.assertDictEqual(mrae_obj_test.state_dict(),self.mrae_obj.state_dict())
 
     def test_objective_and_optimizers(self):
         # do a forward pass of the model then a forward pass of the objective class, check outputs

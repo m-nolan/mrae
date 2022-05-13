@@ -273,12 +273,32 @@ class MRAE(nn.Module):
         # log loss_dict k, v pairs to tensorboard, wandb, whatever
         pass
 
-    def get_checkpoint(self):
-        pass
+    def save_checkpoint(self,file_path,epoch,train_loss,valid_loss):
+        torch.save(
+            {
+                'epoch': epoch,
+                'model_state_dict': self.state_dict(),
+                'output_optimizer_state_dict': self.output_opt.state_dict(),
+                'block_optimizer_state_dict': [b_opt.state_dict() for b_opt in self.block_opt],
+                'output_scheduler_state_dict': self.output_sch.state_dict(),
+                'block_scheduler_state_dict': [b_sch.state_dict() for b_sch in self.block_sch],
+                'train_loss': train_loss,
+                'valid_loss': valid_loss,
+            },
+            file_path
+        )
 
-    def load_from_checkpoint(self,checkpoint):
+    def load_mrae_checkpoint(self,file_path):
         # create model from checkpoint file
-        pass
+        checkpoint = torch.load(file_path)
+        self.load_state_dict(checkpoint['model_state_dict'])
+        self.configure_optimizers()
+        self.configure_schedulers()
+        self.output_opt.load_state_dict(checkpoint['output_optimizer_state_dict'])
+        self.output_sch.load_state_dict(checkpoint['output_scheduler_state_dict'])
+        for b_idx in range(self.num_blocks):
+            self.block_opt[b_idx].load_state_dict(checkpoint['block_optimizer_state_dict'][b_idx])
+            self.block_sch[b_idx].load_state_dict(checkpoint['block_scheduler_state_dict'][b_idx])
 
 class RAE_block(nn.Module):
 
