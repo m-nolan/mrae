@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +11,8 @@ from .objective import MRAELoss, backward_on_block_params
 
 from warnings import warn
 
+BEST_CHECKPOINT_STR = 'best.pt'
+LAST_CHECKPOINT_STR = 'last.pt'
 class MRAE(nn.Module):
 
     def __init__(self, input_size, encoder_size, decoder_size, num_blocks, 
@@ -108,9 +111,35 @@ class MRAE(nn.Module):
                 max_norm=self.max_grad_norm
             )
 
-    def fit(self,train_dl,valid_dl,objective,max_epochs=1000):
-        min_f_int_width = int(np.ceil(np.log10(max_epochs)))
-        for epoch_idx in range(max_epochs):
+    def _initialize_opt(self,save_dir,overwrite):
+        if os.path.exists(save_dir):
+            if overwrite:
+                epoch_idx = 0
+                best_valid_loss = np.inf
+            else:
+                last_checkpoint_file = os.path.join(save_dir,LAST_CHECKPOINT_STR)
+                if os.path.exists(last_checkpoint_file):
+                    self.load_mrae_checkpoint(last_checkpoint_file)
+                    last_checkpoint = torch.load(last_checkpoint_file)
+                    epoch_idx = last_checkpoint['epoch'] - 1
+                    best_valid_loss = last_checkpoint['valid_loss']
+                else:
+                    pass
+        else:
+            os.makedirs(save_dir)
+            epoch_idx = 0
+            best_valid_loss = np.inf
+
+    def fit(self,train_dl,valid_dl,objective,save_dir=None,
+            max_epochs=1000,n_search_epochs=20,overwrite=False,):
+        
+        # set up optimization: either create new directory + fit, resume optimization, or overwrite
+        epoch_idx, best_valid_loss = self._initialize_opt(save_dir,overwrite)
+        
+        search_count = 0
+        continue_loop = True #TODO: pack actual value into checkpoint
+
+        while continue_loop:
             batch_train_output_loss = []
             batch_train_block_loss = []
             batch_train_kl_div = []
@@ -181,6 +210,18 @@ class MRAE(nn.Module):
             # step schedulers
             self.step_schedulers(valid_output_loss, valid_block_loss)
             objective.step(epoch_idx)
+
+            # update training loop continue state
+            if epoch_valid_loss.output_loss < best_valid_loss:
+                best_valid_loss = epoch_valid_loss.output_loss
+                search_count = 0
+            else:
+                search_count += 1
+
+            continue_loop = epoch_idx < max_epochs - 1 \
+                and search_count < n_search_epochs - 1
+            if continue_loop:
+                epoch_idx +=1
 
     @staticmethod
     def compute_epoch_loss(output_loss_list, block_loss_list, kl_div_list, l2_list):
