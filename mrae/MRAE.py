@@ -122,13 +122,15 @@ class MRAE(nn.Module):
                     self.load_mrae_checkpoint(last_checkpoint_file)
                     last_checkpoint = torch.load(last_checkpoint_file)
                     epoch_idx = last_checkpoint['epoch'] - 1
-                    best_valid_loss = last_checkpoint['valid_loss']
+                    best_valid_loss = last_checkpoint['valid_loss'].output_loss
                 else:
                     pass
         else:
             os.makedirs(save_dir)
             epoch_idx = 0
             best_valid_loss = np.inf
+
+        return epoch_idx, best_valid_loss
 
     def fit(self,train_dl,valid_dl,objective,save_dir=None,
             max_epochs=1000,n_search_epochs=20,overwrite=False,):
@@ -211,12 +213,28 @@ class MRAE(nn.Module):
             self.step_schedulers(valid_output_loss, valid_block_loss)
             objective.step(epoch_idx)
 
-            # update training loop continue state
+            # update training loop continue state and save checkpoints
             if epoch_valid_loss.output_loss < best_valid_loss:
                 best_valid_loss = epoch_valid_loss.output_loss
                 search_count = 0
+                # update best model checkpoint
+                self.save_checkpoint(
+                    os.path.join(save_dir,BEST_CHECKPOINT_STR),
+                    epoch=epoch_idx+1,
+                    train_loss=epoch_train_loss,
+                    valid_loss=epoch_valid_loss,
+                    search_count=search_count
+                )
             else:
                 search_count += 1
+
+            self.save_checkpoint(
+                os.path.join(save_dir,LAST_CHECKPOINT_STR),
+                    epoch=epoch_idx+1,
+                    train_loss=epoch_train_loss,
+                    valid_loss=epoch_valid_loss,
+                    search_count=search_count
+            )
 
             continue_loop = epoch_idx < max_epochs - 1 \
                 and search_count < n_search_epochs - 1
@@ -314,7 +332,7 @@ class MRAE(nn.Module):
         # log loss_dict k, v pairs to tensorboard, wandb, whatever
         pass
 
-    def save_checkpoint(self,file_path,epoch,train_loss,valid_loss):
+    def save_checkpoint(self,file_path,epoch,train_loss,valid_loss,search_count):
         torch.save(
             {
                 'epoch': epoch,
@@ -325,6 +343,7 @@ class MRAE(nn.Module):
                 'block_scheduler_state_dict': [b_sch.state_dict() for b_sch in self.block_sch],
                 'train_loss': train_loss,
                 'valid_loss': valid_loss,
+                'search_count': search_count,
             },
             file_path
         )
