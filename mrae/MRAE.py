@@ -124,7 +124,8 @@ class MRAE(nn.Module):
                     epoch_idx = last_checkpoint['epoch'] - 1
                     best_valid_loss = last_checkpoint['valid_loss'].output_loss
                 else:
-                    pass
+                    epoch_idx = 0
+                    best_valid_loss = np.inf
         else:
             os.makedirs(save_dir)
             epoch_idx = 0
@@ -132,10 +133,12 @@ class MRAE(nn.Module):
 
         return epoch_idx, best_valid_loss
 
-    def fit(self,train_dl,valid_dl,objective,save_dir=None,
+    def fit(self,train_dl,valid_dl,objective,save_dir=None,min_epochs=100,
             max_epochs=1000,n_search_epochs=20,overwrite=False,):
         
         # set up optimization: either create new directory + fit, resume optimization, or overwrite
+        self.configure_optimizers()
+        self.configure_schedulers()
         epoch_idx, best_valid_loss = self._initialize_opt(save_dir,overwrite)
         
         search_count = 0
@@ -225,7 +228,7 @@ class MRAE(nn.Module):
                     valid_loss=epoch_valid_loss,
                     search_count=search_count
                 )
-            else:
+            elif epoch_idx > min_epochs:
                 search_count += 1
 
             self.save_checkpoint(
@@ -407,13 +410,12 @@ class RAE_block(nn.Module):
         return self.block_out(decoder_out), decoder_out, decoder_ic, kl_div
 
     def compute_dec_ic_kl_div(self,dec_ic_posterior_mean,dec_ic_posterior_logvar):
-        kl_div = kl_div_normals(
+        return kl_div_normals(
             self.dec_ic_prior_params['mean'],
             dec_ic_posterior_mean,
             self.dec_ic_prior_params['logvar'],
             dec_ic_posterior_logvar,
-        ).mean(dim=0).sum()
-        return kl_div # average this? sum this?
+        ).mean(dim=(0,1)) # average over batch samples and decoder units
 
     def compute_decoder_l2(self):
         return self.decoder.rnn.hidden_weight_l2_norm()
