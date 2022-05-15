@@ -171,13 +171,15 @@ class OptimizationTests(unittest.TestCase):
         epoch = 0
         test_training_loss = 5.0
         test_validation_loss = 5.0
+        search_count = 0
         
         # test save
         self.mrae.save_checkpoint(
             model_checkpoint_file_path,
             epoch,
             test_training_loss,
-            test_validation_loss
+            test_validation_loss,
+            search_count,
         )
         torch.save(self.mrae_obj.state_dict(),obj_checkpoint_file_path)
 
@@ -330,12 +332,16 @@ class OptimizationTests(unittest.TestCase):
 
     def test_fit(self):
         max_epochs = 2
+        min_epochs = 0
+        test_run_dir = os.path.join(write_dir,'test_fit')
         self.mrae_ecog.configure_optimizers()
         self.mrae_ecog.configure_schedulers()
         self.mrae_ecog.fit(
             self.train_dl,
             self.valid_dl,
             self.mrae_obj,
+            save_dir=test_run_dir,
+            min_epochs=min_epochs,
             max_epochs=max_epochs
         )
 

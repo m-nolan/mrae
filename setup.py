@@ -8,10 +8,11 @@ with open("README.md", "r") as f:
 
 install_requires = [
     'h5py',
+    'gitpython',
     'numpy',
     'torch',
     'tqdm',
-    'yaml'
+    'pyyaml'
 ]
 
 setuptools.setup(

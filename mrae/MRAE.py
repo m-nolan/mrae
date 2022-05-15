@@ -1,11 +1,10 @@
 import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 from tqdm import tqdm
-from . import rnn
+from .rnn import GRU_Modified
 from .data import mrae_output
 from .objective import MRAELoss, backward_on_block_params
 
@@ -230,6 +229,8 @@ class MRAE(nn.Module):
                 )
             elif epoch_idx > min_epochs:
                 search_count += 1
+            else:
+                pass
 
             self.save_checkpoint(
                 os.path.join(save_dir,LAST_CHECKPOINT_STR),
@@ -280,9 +281,11 @@ class MRAE(nn.Module):
         obj.step(epoch_idx) # does this update the obj outside the scope of this method?
         return mrae_out, valid_output_loss, valid_block_loss
 
-    def test_step(self, epoch_idx, input, target):
+    def test_step(self, epoch_idx, input, target, obj):
         #TODO: implement a test step evaluation function to run for a given batch
-        pass
+        mrae_out, test_output_loss, test_block_loss = self._step(input,target,obj)
+        # accuracy = 
+        return mrae_out, test_output_loss, test_block_loss
 
     def step_optimizers(self):
         for b_idx in range(self.num_blocks):
@@ -484,7 +487,7 @@ class Decoder(nn.Module):
             warn('Bidirectional decoder not currently supported. Defaulting to unidirectional.')
         self.bidirectional  = False
 
-        self.rnn    = rnn.GRU_Modified(self.input_size,self.hidden_size)
+        self.rnn    = GRU_Modified(self.input_size,self.hidden_size)
         self.dropout_layer = nn.Dropout(dropout)
 
     def forward(self, input, h0):
@@ -535,3 +538,6 @@ def kl_div_normals(mean_1, mean_2, logvar_1, logvar_2):
     """
     return 0.5 * (logvar_2 - logvar_1 + torch.exp(logvar_1 - logvar_2) \
         + (mean_1 - mean_2).pow(2)/torch.exp(logvar_2) + 1)
+
+if __name__ == "__main__":
+    pass

@@ -1,4 +1,3 @@
-from collections import namedtuple
 from dataclasses import dataclass
 import torch
 import torch.nn as nn
@@ -6,20 +5,6 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 
 from .data import mrae_output
-
-# # loss collection structure
-# mrae_loss = namedtuple(
-#     'mrae_loss',
-#     [
-#         'output_loss',
-#         'block_loss',
-#         'kl_div',
-#         'l2'
-#     ]
-# )
-
-# def print_mrae_loss(loss:mrae_loss):
-#     pass
 
 @dataclass
 class MRAELoss():

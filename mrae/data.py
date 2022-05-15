@@ -26,6 +26,7 @@ class MultiblockTensorDataset(torch.utils.data.Dataset):
             assert target_data_record['ecog'].shape[-1] == band_data_record['ecog_band0'].shape[-1] # channel sizes match
         self.target_data_record = target_data_record
         self.band_data_record = band_data_record
+        self.input_size = target_data_record['ecog'].shape[-1]
         print('aligning target, banded dataset samples...')
         self.set_shared_sample_idx()
         self.n_band = n_band
@@ -107,8 +108,5 @@ def subset_batch_dataloader(ds,subset_idx,batch_size):
     )
     return DataLoader(subset_ds, sampler=subset_sampler)
 
-# valid_samp  = torch.utils.data.sampler.BatchSampler(
-#         torch.utils.data.sampler.SequentialSampler(valid_ds),
-#         batch_size = batch_size,
-#         drop_last = True
-#     )
+if __name__ == "__main__":
+    pass
