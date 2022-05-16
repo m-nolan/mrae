@@ -1,5 +1,4 @@
 import os
-import argparse
 from mrae import data, MRAE, objective, utils
 
 # # # RUN FROM PROJECT ROOT DIRECTORY # # #

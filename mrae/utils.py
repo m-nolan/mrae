@@ -40,6 +40,7 @@ def write_repo_commit_hash(file_path):
 
 def read_yaml(file_path):
     # for hyperparameter files
+    assert os.path.exists(file_path), f"yaml file not found at: {file_path}"
     with open(file_path,'r') as yf:
         yaml_data = yaml.load(yf)
     return yaml_data

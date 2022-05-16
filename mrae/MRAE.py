@@ -496,7 +496,7 @@ class Decoder(nn.Module):
         return gen_out
 
     def gen_input(self,batch_size,seq_len):
-        return torch.zeros(batch_size,seq_len,self.input_size) #TODO: make this force to self.device
+        return torch.zeros(batch_size,seq_len,self.input_size).to(self.rnn.gru_cell.fc_xh_rz.weight.device)
 
 def sample_gaussian(mean, logvar):
     """

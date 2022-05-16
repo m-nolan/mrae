@@ -28,9 +28,9 @@ class GRU_Modified(nn.Module):
         """
         batch_size, n_samples, input_size = input.size()
         assert input_size == self.input_size, "Input tensor size mismatch"
-        output = torch.empty(batch_size,n_samples,self.hidden_size)
+        output = torch.empty(batch_size,n_samples,self.hidden_size).to(self.gru_cell.fc_xh_rz.weight.device)
         if h0 is None:
-            h0 = torch.zeros(batch_size,self.hidden_size)
+            h0 = torch.zeros(batch_size,self.hidden_size).to(self.gru_cell.fc_xh_rz.weight.device)
         h_in = h0
         for s_idx in range(n_samples):
             h_out = self.gru_cell(input[:,s_idx,:],h_in)
