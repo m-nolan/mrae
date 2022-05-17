@@ -7,11 +7,14 @@ from tqdm import tqdm
 from .rnn import GRU_Modified
 from .data import mrae_output
 from .objective import MRAELoss, backward_on_block_params
+from .utils import write_csv
 
 from warnings import warn
 
 BEST_CHECKPOINT_STR = 'best.pt'
 LAST_CHECKPOINT_STR = 'last.pt'
+LOSS_CSV_STR = 'loss.csv'
+LOSS_CSV_TITLE_ROW = ['epoch_idx','train_loss','valid_loss']
 class MRAE(nn.Module):
 
     def __init__(self, input_size, encoder_size, decoder_size, num_blocks, 
@@ -111,8 +114,12 @@ class MRAE(nn.Module):
             )
 
     def _initialize_opt(self,save_dir,overwrite):
+        loss_csv_file = os.path.join(save_dir,LOSS_CSV_STR)
         if os.path.exists(save_dir):
             if overwrite:
+                if os.path.exists(loss_csv_file):
+                    os.remove(loss_csv_file)
+                write_csv(loss_csv_file,LOSS_CSV_TITLE_ROW)
                 epoch_idx = 0
                 best_valid_loss = np.inf
             else:
@@ -123,14 +130,18 @@ class MRAE(nn.Module):
                     epoch_idx = last_checkpoint['epoch'] - 1
                     best_valid_loss = last_checkpoint['valid_loss'].output_loss
                 else:
+                    if os.path.exists(loss_csv_file):
+                        os.remove(loss_csv_file)
+                    write_csv(loss_csv_file,LOSS_CSV_TITLE_ROW)
                     epoch_idx = 0
                     best_valid_loss = np.inf
         else:
             os.makedirs(save_dir)
+            write_csv(loss_csv_file,LOSS_CSV_TITLE_ROW)
             epoch_idx = 0
             best_valid_loss = np.inf
 
-        return epoch_idx, best_valid_loss
+        return epoch_idx, best_valid_loss, loss_csv_file
 
     def fit(self,train_dl,valid_dl,objective,save_dir=None,min_epochs=100,
             max_epochs=1000,n_search_epochs=20,overwrite=False,):
@@ -138,7 +149,7 @@ class MRAE(nn.Module):
         # set up optimization: either create new directory + fit, resume optimization, or overwrite
         self.configure_optimizers()
         self.configure_schedulers()
-        epoch_idx, best_valid_loss = self._initialize_opt(save_dir,overwrite)
+        epoch_idx, best_valid_loss, loss_csv_file = self._initialize_opt(save_dir,overwrite)
         
         search_count = 0
         continue_loop = True #TODO: pack actual value into checkpoint
@@ -234,11 +245,18 @@ class MRAE(nn.Module):
 
             self.save_checkpoint(
                 os.path.join(save_dir,LAST_CHECKPOINT_STR),
-                    epoch=epoch_idx+1,
-                    train_loss=epoch_train_loss,
-                    valid_loss=epoch_valid_loss,
-                    search_count=search_count
+                epoch=epoch_idx+1,
+                train_loss=epoch_train_loss,
+                valid_loss=epoch_valid_loss,
+                search_count=search_count
             )
+
+            write_csv(loss_csv_file,
+                [
+                    epoch_idx,
+                    epoch_train_loss.output_loss.item(),
+                    epoch_valid_loss.output_loss.item()
+                ])
 
             continue_loop = epoch_idx < max_epochs - 1 \
                 and search_count < n_search_epochs - 1
@@ -465,7 +483,7 @@ class Encoder(nn.Module):
     def forward(self, input):
         batch_size, seq_len, input_size = input.size()
         assert input_size == self.input_size
-        rnn_out, rnn_n = self.rnn(input)
+        _, rnn_n = self.rnn(input)
         #TODO: add rnn output clip
         rnn_n = self.dropout_layer(rnn_n)
         rnn_n = rnn_n.permute(1,0,2).reshape(batch_size,-1) # [batch_size, num_layers * bidir_scale * hidden_size]

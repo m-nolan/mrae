@@ -1,3 +1,4 @@
+import csv
 import os
 import git
 import h5py
@@ -37,6 +38,13 @@ def get_repo_commit_hash():
 def write_repo_commit_hash(file_path):
     with open(file_path,'w') as fp:
         fp.write(get_repo_commit_hash())
+
+def write_csv(file_path,row_data):
+    # append to csv file
+    mode = 'a' if os.path.exists(file_path) else 'w'
+    with open(file_path,mode=mode,newline='') as cf:
+        writer = csv.writer(cf,delimiter=',')
+        writer.writerow(row_data)
 
 def read_yaml(file_path):
     # for hyperparameter files

@@ -342,7 +342,8 @@ class OptimizationTests(unittest.TestCase):
             self.mrae_obj,
             save_dir=test_run_dir,
             min_epochs=min_epochs,
-            max_epochs=max_epochs
+            max_epochs=max_epochs,
+            overwrite=True
         )
 
     def test_evaluate(self):
