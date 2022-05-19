@@ -155,18 +155,14 @@ class MRAE(nn.Module):
         continue_loop = True #TODO: pack actual value into checkpoint
 
         while continue_loop:
-            batch_train_output_loss = []
-            batch_train_block_loss = []
-            batch_train_kl_div = []
-            batch_train_l2 = []
-            batch_valid_output_loss = []
-            batch_valid_block_loss = []
-            batch_valid_kl_div = []
-            batch_valid_l2 = []
-
             print(f'epoch:\t{epoch_idx+1}')
 
             self.train()
+            batch_train_output_loss = 0.
+            batch_train_block_loss = torch.zeros(self.num_blocks)
+            batch_train_kl_div = torch.zeros(self.num_blocks)
+            batch_train_l2 = torch.zeros(self.num_blocks)
+            n_train_batch = len(train_dl)
             train_pbar = tqdm(train_dl)
             for input, target in train_pbar:
                 input = input.squeeze()
@@ -175,19 +171,18 @@ class MRAE(nn.Module):
                     epoch_idx,input,target,objective
                 )
                 train_pbar.set_description(f'tl {train_output_loss:0.3f} ')
-                # add collecting mechanism for training loss values
-                batch_train_output_loss.append(train_output_loss)
-                batch_train_block_loss.append(train_block_loss)
-                batch_train_kl_div.append(mrae_out.decoder_ic_kl_div)
-                batch_train_l2.append(mrae_out.decoder_l2)
+                batch_train_output_loss += train_output_loss.data.cpu()
+                batch_train_block_loss += train_block_loss.data.cpu()
+                batch_train_kl_div += mrae_out.decoder_ic_kl_div.data.cpu()
+                batch_train_l2 += mrae_out.decoder_l2.data.cpu()
             train_pbar.close()
 
             # average training loss value for the epoch
-            epoch_train_loss = self.compute_epoch_loss(
-                batch_train_output_loss,
-                batch_train_block_loss,
-                batch_train_kl_div,
-                batch_train_l2
+            epoch_train_loss = MRAELoss(
+                output_loss=batch_train_output_loss/n_train_batch,
+                block_loss=batch_train_block_loss/n_train_batch,
+                kl_div=batch_train_kl_div/n_train_batch,
+                l2=batch_train_l2/n_train_batch
             )
             print('training loss')
             print(epoch_train_loss)
@@ -195,6 +190,11 @@ class MRAE(nn.Module):
             self.log_loss(epoch_train_loss,'train')
 
             self.eval()
+            batch_valid_output_loss = 0.
+            batch_valid_block_loss = torch.zeros(self.num_blocks)
+            batch_valid_kl_div = torch.zeros(self.num_blocks)
+            batch_valid_l2 = torch.zeros(self.num_blocks)
+            n_valid_batch = len(valid_dl)
             valid_pbar = tqdm(valid_dl)
             for input, target in valid_dl:
                 input = input.squeeze()
@@ -203,19 +203,18 @@ class MRAE(nn.Module):
                     epoch_idx,input,target,objective
                 )
                 valid_pbar.set_description(f'vl {valid_output_loss:0.3f} ')
-                # add collection mechanism for validation loss values
-                batch_valid_output_loss.append(valid_output_loss)
-                batch_valid_block_loss.append(valid_block_loss)
-                batch_valid_kl_div.append(mrae_out.decoder_ic_kl_div)
-                batch_valid_l2.append(mrae_out.decoder_l2)
+                batch_valid_output_loss += valid_output_loss.data.cpu()
+                batch_valid_block_loss += valid_block_loss.data.cpu()
+                batch_valid_kl_div += mrae_out.decoder_ic_kl_div.data.cpu()
+                batch_valid_l2 += mrae_out.decoder_l2.data.cpu()
             valid_pbar.close()
 
             # log average validation loss value for the epoch
-            epoch_valid_loss = self.compute_epoch_loss(
-                batch_valid_output_loss,
-                batch_valid_block_loss,
-                batch_valid_kl_div,
-                batch_valid_l2
+            epoch_valid_loss = MRAELoss(
+                output_loss=batch_valid_output_loss/n_valid_batch,
+                block_loss=batch_valid_block_loss/n_valid_batch,
+                kl_div=batch_valid_kl_div/n_valid_batch,
+                l2=batch_valid_l2/n_valid_batch
             )
             print('validation loss')
             print(epoch_valid_loss)
@@ -243,6 +242,9 @@ class MRAE(nn.Module):
             else:
                 pass
 
+            epoch_train_loss = 1234.
+            epoch_valid_loss = 1234.
+
             self.save_checkpoint(
                 os.path.join(save_dir,LAST_CHECKPOINT_STR),
                 epoch=epoch_idx+1,
@@ -261,7 +263,7 @@ class MRAE(nn.Module):
             continue_loop = epoch_idx < max_epochs - 1 \
                 and search_count < n_search_epochs - 1
             if continue_loop:
-                epoch_idx +=1
+                epoch_idx +=1\
 
     @staticmethod
     def compute_epoch_loss(output_loss_list, block_loss_list, kl_div_list, l2_list):
